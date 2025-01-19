@@ -1,14 +1,23 @@
+import org.pcap4j.core.NotOpenException;
+import org.pcap4j.core.*;
+import org.pcap4j.core.PcapNativeException;
+import org.pcap4j.core.PcapNetworkInterface;
+
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.util.List;
 
 public class InterfaceWindow extends JFrame implements ActionListener {
     private JComboBox<String> networkList; // Dropdown for network interfaces
     private JTextArea textInterfaceInfo;  // Area to display interface details
-    private NetworkInterfaceInfo backEnd;              // Backend instance
+    private NetworkInterfaceInfo backEnd;
+    private PacketCapturing packetCapturing;// Backend instance
+    private JTable packetList;
+
 
     public InterfaceWindow() {
         // Create a panel to hold components
@@ -19,6 +28,9 @@ public class InterfaceWindow extends JFrame implements ActionListener {
 
         // Instantiate Backend
         backEnd = new NetworkInterfaceInfo();
+        packetCapturing = new PacketCapturing();
+        packetList = new JTable();
+
 
         // Top JComboBox (Network List)
         JLabel networkLabel = new JLabel("Select Network:");
@@ -38,6 +50,7 @@ public class InterfaceWindow extends JFrame implements ActionListener {
         panel.add(filterLabel);
 
         JComboBox<String> protocolList = new JComboBox<>();
+        protocolList.addItem("");
         protocolList.addItem("TCP");
         protocolList.addItem("UDP");
         protocolList.setBounds(560, 20, 150, 20); // Positioned to the right of the filter label
@@ -48,6 +61,31 @@ public class InterfaceWindow extends JFrame implements ActionListener {
         capture.setBounds(720, 20, 100, 20);
         capture.setBackground(Color.BLUE);
         capture.setForeground(Color.WHITE);
+        capture.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                // Get the selected network
+                String selectedNetwork = (String) networkList.getSelectedItem();
+                if(selectedNetwork == null){
+                    return;
+                }
+                try {
+                    PcapNetworkInterface device = backEnd.getDevice(selectedNetwork);
+                    if (device != null) {
+                        // Start capturing packets
+                        packetCapturing.startCapturing(device, packetList);
+                        System.out.println("Captured list");
+                    } else {
+                        JOptionPane.showMessageDialog(InterfaceWindow.this, "No device found.");
+                    }
+                } catch (NotOpenException ex) {
+                    throw new RuntimeException(ex);
+                } catch (PcapNativeException ex) {
+                    throw new RuntimeException(ex);
+                }
+            }
+        });
+
         panel.add(capture);
 
         JButton start = new JButton("Start");
@@ -127,7 +165,7 @@ public class InterfaceWindow extends JFrame implements ActionListener {
             for (String iface : interfaces) {
                 networkList.addItem(iface); // Add each interface to the dropdown
             }
-        } catch (SocketException ex) {
+        } catch (SocketException | PcapNativeException ex) {
             JOptionPane.showMessageDialog(this, "Error fetching network interfaces: " + ex.getMessage());
         }
     }
