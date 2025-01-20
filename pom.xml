@@ -12,11 +12,9 @@
 
         <dependency>
             <groupId>org.pcap4j</groupId>
-            <artifactId>pcap4j</artifactId>
+            <artifactId>pcap4j-core</artifactId>
             <version>1.8.2</version>
-            <type>pom</type>
         </dependency>
-
 
 
         <!-- SLF4J API -->

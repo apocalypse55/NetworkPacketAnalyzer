@@ -178,7 +178,7 @@ public class InterfaceWindow extends JFrame implements ActionListener {
                 // Fetch details from backend
                 String details = backEnd.getInterfaceDetails(selectedNetwork);
                 textInterfaceInfo.setText(details); // Update Interface Info
-            } catch (SocketException ex) {
+            } catch (SocketException | PcapNativeException ex) {
                 JOptionPane.showMessageDialog(this, "Error fetching interface details: " + ex.getMessage());
             }
         }

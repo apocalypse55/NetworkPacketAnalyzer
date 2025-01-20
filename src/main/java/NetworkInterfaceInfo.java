@@ -22,7 +22,7 @@ public class NetworkInterfaceInfo {
         for (int i = 0; i < devices.size(); i++) {
             PcapNetworkInterface iface = devices.get(i);
             if (iface.isUp()) {
-                interfaceNames.add(iface.getName());
+                interfaceNames.add(iface.getDescription());
             }
         }
 //        while (devices.hasMoreElements()) {
@@ -35,29 +35,20 @@ public class NetworkInterfaceInfo {
     }
 
     // Method to fetch detailed information about a specific interface
-    public String getInterfaceDetails(String interfaceName) throws SocketException {
-        NetworkInterface iface = NetworkInterface.getByName(interfaceName);
+    public String getInterfaceDetails(String interfaceName) throws SocketException, PcapNativeException {
+        PcapNetworkInterface iface = getDevice(interfaceName);
         if (iface == null) {
             return "Interface not found.";
         }
 
         StringBuilder details = new StringBuilder();
         details.append("Interface Name: ").append(iface.getName()).append("\n");
-        details.append("Display Name: ").append(iface.getDisplayName()).append("\n");
-        details.append("Hardware Address: ").append(Arrays.toString(iface.getHardwareAddress())).append("\n");
-        details.append("MTU: ").append(iface.getMTU()).append("\n");
-        details.append("Supports Multicast: ").append(iface.supportsMulticast()).append("\n");
+        details.append("Description Name: ").append(iface.getDescription()).append("\n");
+        details.append("Address Name: ").append(iface.getAddresses()).append("\n");
+        details.append("LinklayerAddress Name: ").append(iface.getLinkLayerAddresses()).append("\n");
 
-        details.append("\nInetAddresses:\n");
-        Enumeration<InetAddress> inetAddresses = iface.getInetAddresses();
-        while (inetAddresses.hasMoreElements()) {
-            details.append("\t").append(inetAddresses.nextElement().toString()).append("\n");
-        }
 
-        details.append("\nInterface Addresses:\n");
-        for (InterfaceAddress addr : iface.getInterfaceAddresses()) {
-            details.append("\t").append(addr.getAddress().toString()).append("\n");
-        }
+
 
         return details.toString();
     }
@@ -67,10 +58,12 @@ public class NetworkInterfaceInfo {
 
         for (int i = 0; i < devices.size(); i++) {
             PcapNetworkInterface iface = devices.get(i);
-            if (iface.getName() == name) {
-               return iface;
+            if (iface.getDescription().equals(name)){
+                System.out.println(name);
+                return iface;
+
             }
         }
-    return null;
+        return null;
     }
 }

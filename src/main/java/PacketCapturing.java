@@ -47,9 +47,10 @@ public class PacketCapturing {
     }
 
     private void updatePacketTable(Packet packet, JTable packetList) {
+        System.out.println(packet);
         // You can adjust the packet details here to display in the table (e.g., length, source, etc.)
-        DefaultTableModel model = (DefaultTableModel) packetList.getModel();
-        Object[] row = {model.getRowCount() + 1, packet.length(), packet.getPayload().toString(), "Destination", "TCP"};
-        model.addRow(row);
+//        DefaultTableModel model = (DefaultTableModel) packetList.getModel();
+//        Object[] row = {model.getRowCount() + 1, packet.length(), packet.getPayload().toString(), "Destination", "TCP"};
+//        model.addRow(row);
     }
 }
