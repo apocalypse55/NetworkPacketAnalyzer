@@ -88,15 +88,15 @@ public class InterfaceWindow extends JFrame implements ActionListener {
 
         panel.add(capture);
 
-        JButton start = new JButton("Start");
+        JButton start = new JButton("Stop");
         start.setBounds(825, 20, 100, 20);
-        start.setBackground(Color.GREEN);
+        start.setBackground(Color.RED);
         start.setForeground(Color.WHITE);
         panel.add(start);
 
-        JButton stop = new JButton("Stop");
+        JButton stop = new JButton("Save");
         stop.setBounds(930, 20, 100, 20);
-        stop.setBackground(Color.RED);
+        stop.setBackground(Color.GREEN);
         stop.setForeground(Color.WHITE);
         panel.add(stop);
 

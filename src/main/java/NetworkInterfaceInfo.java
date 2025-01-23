@@ -10,9 +10,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.List;
+import org.pcap4j.util.MacAddress;
+import org.pcap4j.util.NifSelector;
 
 public class NetworkInterfaceInfo {
-
     // Method to fetch all active network interfaces
     public List<String> getNetworkInterfaces() throws SocketException, PcapNativeException {
         List<PcapNetworkInterface> devices = Pcaps.findAllDevs();
@@ -46,9 +47,6 @@ public class NetworkInterfaceInfo {
         details.append("Description Name: ").append(iface.getDescription()).append("\n");
         details.append("Address Name: ").append(iface.getAddresses()).append("\n");
         details.append("LinklayerAddress Name: ").append(iface.getLinkLayerAddresses()).append("\n");
-
-
-
 
         return details.toString();
     }
