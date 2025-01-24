@@ -22,8 +22,20 @@ public class PacketCapturing {
         handle.setFilter(filter, BpfProgram.BpfCompileMode.OPTIMIZE);
 
         // Create a listener that will capture packets and add them to the queue
-        PacketListener listener = packet -> {
-            try {
+//        PacketListener listener = packet -> {
+//            try {
+//                packetQueue.put(packet); // Add packet to the queue
+//                // Update the packet list table (on the EDT)
+//                SwingUtilities.invokeLater(() -> updatePacketTable(packet, packetList));
+//                dumper.dump(packet, handle.getTimestamp());
+//            } catch (InterruptedException | NotOpenException e) {
+//                e.printStackTrace();
+//            }
+//        };
+        PacketListener listener = new PacketListener() {
+            @Override
+            public void gotPacket(Packet packet) {
+                try {
                 packetQueue.put(packet); // Add packet to the queue
                 // Update the packet list table (on the EDT)
                 SwingUtilities.invokeLater(() -> updatePacketTable(packet, packetList));
@@ -31,12 +43,13 @@ public class PacketCapturing {
             } catch (InterruptedException | NotOpenException e) {
                 e.printStackTrace();
             }
+            }
         };
 
         // Start capturing packets in a separate thread
         new Thread(() -> {
             try {
-                int maxPackets = 20;
+                int maxPackets = 50;
                 handle.loop(maxPackets, listener);
             } catch (InterruptedException e) {
                 e.printStackTrace();
@@ -48,9 +61,8 @@ public class PacketCapturing {
 
     private void updatePacketTable(Packet packet, JTable packetList) {
         System.out.println(packet);
-        // You can adjust the packet details here to display in the table (e.g., length, source, etc.)
-//        DefaultTableModel model = (DefaultTableModel) packetList.getModel();
-//        Object[] row = {model.getRowCount() + 1, packet.length(), packet.getPayload().toString(), "Destination", "TCP"};
-//        model.addRow(row);
+        DefaultTableModel model = (DefaultTableModel) packetList.getModel();
+        Object[] row = {model.getRowCount() + 1, packet.length(), packet.toString(), "Destination", "TCP"};
+        model.addRow(row);
     }
 }

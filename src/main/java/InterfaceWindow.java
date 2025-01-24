@@ -4,6 +4,7 @@ import org.pcap4j.core.PcapNativeException;
 import org.pcap4j.core.PcapNetworkInterface;
 
 import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -29,7 +30,7 @@ public class InterfaceWindow extends JFrame implements ActionListener {
         // Instantiate Backend
         backEnd = new NetworkInterfaceInfo();
         packetCapturing = new PacketCapturing();
-        packetList = new JTable();
+
 
 
         // Top JComboBox (Network List)
@@ -101,13 +102,15 @@ public class InterfaceWindow extends JFrame implements ActionListener {
         panel.add(stop);
 
         // JTable
-        String[][] row = {};
+        // Use the class-level packetList
         String[] columns = {"No.", "Length", "Source", "Destination", "Protocol"};
-        JTable packetList = new JTable(row, columns);
+        DefaultTableModel model = new DefaultTableModel(columns, 0);
+        packetList = new JTable(model);
         packetList.setBounds(30, 50, 1030, 400);
         JScrollPane scroll = new JScrollPane(packetList);
         scroll.setBounds(30, 60, 1030, 400);
         panel.add(scroll);
+
 
         // Text areas
         JLabel interfaceInfo = new JLabel("Interface Info");
