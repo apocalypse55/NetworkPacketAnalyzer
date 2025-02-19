@@ -2,8 +2,10 @@ import org.pcap4j.core.NotOpenException;
 import org.pcap4j.core.*;
 import org.pcap4j.core.PcapNativeException;
 import org.pcap4j.core.PcapNetworkInterface;
+import org.pcap4j.packet.Packet;
 
 import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -17,6 +19,7 @@ public class InterfaceWindow extends JFrame implements ActionListener {
     private NetworkInterfaceInfo backEnd;
     private PacketCapturing packetCapturing;// Backend instance
     private JTable packetList;
+    private JTextArea hexdataInfo;
 
 
     public InterfaceWindow() {
@@ -28,8 +31,8 @@ public class InterfaceWindow extends JFrame implements ActionListener {
 
         // Instantiate Backend
         backEnd = new NetworkInterfaceInfo();
-        packetCapturing = new PacketCapturing();
-        packetList = new JTable();
+        packetCapturing = new PacketCapturing(backEnd);
+
 
 
         // Top JComboBox (Network List)
@@ -88,26 +91,41 @@ public class InterfaceWindow extends JFrame implements ActionListener {
 
         panel.add(capture);
 
-        JButton start = new JButton("Start");
+        JButton start = new JButton("Stop");
         start.setBounds(825, 20, 100, 20);
-        start.setBackground(Color.GREEN);
+        start.setBackground(Color.RED);
         start.setForeground(Color.WHITE);
         panel.add(start);
 
-        JButton stop = new JButton("Stop");
+        JButton stop = new JButton("Save");
         stop.setBounds(930, 20, 100, 20);
-        stop.setBackground(Color.RED);
+        stop.setBackground(Color.GREEN);
         stop.setForeground(Color.WHITE);
         panel.add(stop);
 
         // JTable
-        String[][] row = {};
         String[] columns = {"No.", "Length", "Source", "Destination", "Protocol"};
-        JTable packetList = new JTable(row, columns);
+        DefaultTableModel model = new DefaultTableModel(columns, 0);
+        packetList = new JTable(model);
         packetList.setBounds(30, 50, 1030, 400);
+        
+        // Add selection listener to the table
+        packetList.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {  // Only react to the final event
+                int selectedRow = packetList.getSelectedRow();
+                if (selectedRow >= 0) {
+                    Packet packet = packetCapturing.getPacket(selectedRow);
+                    if (packet != null) {
+                        hexdataInfo.setText(byteArrayToHex(packet.getRawData()));
+                    }
+                }
+            }
+        });
+        
         JScrollPane scroll = new JScrollPane(packetList);
         scroll.setBounds(30, 60, 1030, 400);
         panel.add(scroll);
+
 
         // Text areas
         JLabel interfaceInfo = new JLabel("Interface Info");
@@ -141,7 +159,7 @@ public class InterfaceWindow extends JFrame implements ActionListener {
         hexData.setBounds(755, 470, 100, 30);
         panel.add(hexData);
 
-        JTextArea hexdataInfo = new JTextArea();
+        hexdataInfo = new JTextArea();
         hexdataInfo.setBounds(750, 500, 300, 250);
         hexdataInfo.setEditable(false);
         JScrollPane hexScroll = new JScrollPane(hexdataInfo);
@@ -172,16 +190,26 @@ public class InterfaceWindow extends JFrame implements ActionListener {
 
     @Override
     public void actionPerformed(ActionEvent e) {
-        if (e.getSource() == networkList) { // Check if event is from networkList
+        if (e.getSource() == networkList) {
             String selectedNetwork = (String) networkList.getSelectedItem();
             try {
-                // Fetch details from backend
+                backEnd.setSelectedInterface(selectedNetwork);
                 String details = backEnd.getInterfaceDetails(selectedNetwork);
-                textInterfaceInfo.setText(details); // Update Interface Info
-            } catch (SocketException ex) {
+                textInterfaceInfo.setText(details);
+            } catch (SocketException | PcapNativeException ex) {
                 JOptionPane.showMessageDialog(this, "Error fetching interface details: " + ex.getMessage());
             }
         }
+    }
+
+    private String byteArrayToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < bytes.length; i++) {
+            sb.append(String.format("%02X", bytes[i]));
+            if (i % 2 == 1) sb.append(" ");  // Space between every 2 bytes
+            if (i % 16 == 15) sb.append("\n");  // New line every 16 bytes
+        }
+        return sb.toString();
     }
 
     public static void main(String[] args) {
