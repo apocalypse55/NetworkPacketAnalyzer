@@ -2,6 +2,9 @@ import org.pcap4j.core.*;
 import org.pcap4j.packet.*;
 import org.pcap4j.packet.namednumber.DataLinkType;
 import org.pcap4j.util.MacAddress;
+import org.pcap4j.packet.IpV4Packet.IpV4Header;
+import org.pcap4j.packet.TcpPacket.TcpHeader;
+import org.pcap4j.packet.UdpPacket.UdpHeader;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -15,59 +18,66 @@ public class PacketCapturing {
     private BlockingQueue<Packet> packetQueue = new LinkedBlockingQueue<>();
     private List<Packet> capturedPackets = new ArrayList<>();
     private NetworkInterfaceInfo networkInfo;
+    private String protocolFilter = "All";
+    private volatile boolean isRunning = false;
+    private PcapHandle handle;
+    private PcapDumper dumper;
 
     public PacketCapturing(NetworkInterfaceInfo networkInfo) {
         this.networkInfo = networkInfo;
     }
 
     public void startCapturing(PcapNetworkInterface device, JTable packetList) throws PcapNativeException, NotOpenException {
-        int snapshotLength = 65536;
-        int readTimeout = 50;
+        try {
+            isRunning = true;
+            int snapshotLength = 65536;
+            int readTimeout = 50;
 
-        final PcapHandle handle = new PcapHandle.Builder(device.getName())
-                .snaplen(snapshotLength)
-                .promiscuousMode(PcapNetworkInterface.PromiscuousMode.PROMISCUOUS)
-                .timeoutMillis(readTimeout)
-                .build();
+            handle = new PcapHandle.Builder(device.getName())
+                    .snaplen(snapshotLength)
+                    .promiscuousMode(PcapNetworkInterface.PromiscuousMode.PROMISCUOUS)
+                    .timeoutMillis(readTimeout)
+                    .build();
 
-        // Check if this is a wireless interface
-        if (device.getLinkLayerAddresses() != null && !device.getLinkLayerAddresses().isEmpty()) {
-            System.out.println("Link type: " + handle.getDlt());
-            if (handle.getDlt() == DataLinkType.IEEE802_11) {
-                System.out.println("Wireless interface detected");
-            }
-        }
-
-        PcapDumper dumper = handle.dumpOpen("out.pcap");
-
-        PacketListener listener = new PacketListener() {
-            @Override
-            public void gotPacket(Packet packet) {
-                try {
-                    packetQueue.put(packet);
-                    SwingUtilities.invokeLater(() -> updatePacketTable(packet, packetList));
-                    dumper.dump(packet, handle.getTimestamp());
-                } catch (InterruptedException | NotOpenException e) {
-                    e.printStackTrace();
+            // Check if this is a wireless interface
+            if (device.getLinkLayerAddresses() != null && !device.getLinkLayerAddresses().isEmpty()) {
+                System.out.println("Link type: " + handle.getDlt());
+                if (handle.getDlt() == DataLinkType.IEEE802_11) {
+                    System.out.println("Wireless interface detected");
                 }
             }
-        };
 
-        new Thread(() -> {
-            try {
-                int maxPackets = 500;
-                handle.loop(maxPackets, listener);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            } catch (NotOpenException | PcapNativeException e) {
-                throw new RuntimeException(e);
-            }
-        }).start();
+            dumper = handle.dumpOpen("out.pcap");
+
+            PacketListener listener = new PacketListener() {
+                @Override
+                public void gotPacket(Packet packet) {
+                    try {
+                        packetQueue.put(packet);
+                        SwingUtilities.invokeLater(() -> updatePacketTable(packet, packetList));
+                        dumper.dump(packet, handle.getTimestamp());
+                    } catch (InterruptedException | NotOpenException e) {
+                        e.printStackTrace();
+                    }
+                }
+            };
+
+            new Thread(() -> {
+                try {
+                    while (isRunning && handle.isOpen()) {
+                        handle.loop(1, listener);  // Capture one packet at a time
+                    }
+                } catch (InterruptedException | NotOpenException | PcapNativeException e) {
+                    e.printStackTrace();
+                }
+            }).start();
+        } catch (PcapNativeException e) {
+            stopCapturing();  // Clean up resources if initialization fails
+            throw e;  // Re-throw the exception to be handled by the caller
+        }
     }
 
     private void updatePacketTable(Packet packet, JTable packetList) {
-        capturedPackets.add(packet);
-
         String sourceAddress = "Unknown";
         String destAddress = "Unknown";
         String protocol = "Unknown";
@@ -109,14 +119,18 @@ public class PacketCapturing {
             System.out.println("Destination: " + destAddress);
             System.out.println("Protocol: " + protocol);
 
+            // Only add packets that match the filter
+            if (shouldDisplayPacket(protocol)) {
+                DefaultTableModel model = (DefaultTableModel) packetList.getModel();
+                Object[] row = {model.getRowCount() + 1, packet.length(), sourceAddress, destAddress, protocol};
+                model.addRow(row);
+                capturedPackets.add(packet);
+            }
+
         } catch (Exception e) {
             System.out.println("Error processing packet: " + e.getMessage());
             e.printStackTrace();
         }
-
-        DefaultTableModel model = (DefaultTableModel) packetList.getModel();
-        Object[] row = {model.getRowCount() + 1, packet.length(), sourceAddress, destAddress, protocol};
-        model.addRow(row);
     }
 
     private String getEncapsulatedProtocol(IpPacket ipPacket) {
@@ -156,5 +170,114 @@ public class PacketCapturing {
             return capturedPackets.get(index);
         }
         return null;
+    }
+
+    public void stopCapturing() {
+        isRunning = false;
+        if (dumper != null) {
+            dumper.close();
+        }
+        if (handle != null && handle.isOpen()) {
+            handle.close();
+        }
+    }
+
+    public void setProtocolFilter(String filter) {
+        this.protocolFilter = filter;
+    }
+
+    private boolean shouldDisplayPacket(String protocol) {
+        if (protocolFilter.equals("All")) {
+            return true;
+        }
+        return protocol.equals(protocolFilter);
+    }
+
+    public void saveCapture() throws NotOpenException, PcapNativeException {
+        if (dumper != null) {
+            dumper.flush();  // Ensure all packets are written
+        }
+    }
+
+    public boolean isCapturing() {
+        return isRunning;
+    }
+
+    public String getPacketDetails(Packet packet) {
+        if (packet == null) return "";
+        
+        StringBuilder details = new StringBuilder();
+        
+        // Frame information
+        details.append(String.format("Frame: %d bytes on wire, %d bytes captured\n",
+            packet.length(), packet.length()));
+            
+        // Ethernet information
+        if (packet instanceof EthernetPacket) {
+            EthernetPacket ethernetPacket = (EthernetPacket) packet;
+            details.append("Ethernet II:\n");
+            details.append(String.format("   Source MAC: %s\n", ethernetPacket.getHeader().getSrcAddr()));
+            details.append(String.format("   Destination MAC: %s\n", ethernetPacket.getHeader().getDstAddr()));
+        }
+        
+        // IP information
+        if (packet.contains(IpPacket.class)) {
+            IpPacket ipPacket = packet.get(IpPacket.class);
+            details.append(String.format("Internet Protocol Version %d:\n",
+                ipPacket instanceof IpV4Packet ? 4 : 6));
+            details.append("   0100 .... = Version: " + (ipPacket instanceof IpV4Packet ? "4" : "6") + "\n");
+            if (ipPacket instanceof IpV4Packet) {
+                IpV4Packet ipv4Packet = (IpV4Packet) ipPacket;
+                IpV4Header header = ipv4Packet.getHeader();
+                details.append(String.format("   .... %d = Header Length: %d bytes\n", 
+                    header.getIhlAsInt(), header.getIhlAsInt() * 4));
+                details.append(String.format("   Differentiated Services Field: 0x%02x\n", 
+                    header.getTos().value()));
+                details.append(String.format("   Total Length: %d\n", header.getTotalLength()));
+                details.append(String.format("   Identification: 0x%04x (%d)\n", 
+                    header.getIdentification(), header.getIdentification()));
+                details.append(String.format("   Flags: 0x%x\n", header.getFragmentOffset() >> 13));
+                details.append(String.format("   Fragment Offset: %d\n", header.getFragmentOffset() & 0x1FFF));
+                details.append(String.format("   Time to Live: %d\n", header.getTtl()));
+                details.append(String.format("   Protocol: %s (%d)\n", 
+                    getProtocolName(header.getProtocol().value()), header.getProtocol().value()));
+                details.append(String.format("   Header Checksum: 0x%04x\n", header.getHeaderChecksum()));
+                details.append(String.format("   Source Address: %s\n", header.getSrcAddr()));
+                details.append(String.format("   Destination Address: %s\n", header.getDstAddr()));
+            }
+        }
+        
+        // TCP/UDP information
+        if (packet.contains(TcpPacket.class)) {
+            TcpPacket tcpPacket = packet.get(TcpPacket.class);
+            TcpHeader header = tcpPacket.getHeader();
+            details.append("Transmission Control Protocol:\n");
+            details.append(String.format("   Source Port: %d\n", header.getSrcPort().valueAsInt()));
+            details.append(String.format("   Destination Port: %d\n", header.getDstPort().valueAsInt()));
+            details.append(String.format("   Sequence Number: %d\n", header.getSequenceNumber()));
+            details.append(String.format("   Acknowledgment Number: %d\n", header.getAcknowledgmentNumber()));
+            details.append(String.format("   Header Length: %d bytes\n", header.getDataOffset() * 4));
+            // TCP Flags
+            details.append("   Flags: ");
+            details.append(header.getUrg() ? "URG " : "");
+            details.append(header.getAck() ? "ACK " : "");
+            details.append(header.getPsh() ? "PSH " : "");
+            details.append(header.getRst() ? "RST " : "");
+            details.append(header.getSyn() ? "SYN " : "");
+            details.append(header.getFin() ? "FIN " : "");
+            details.append("\n");
+            details.append(String.format("   Window Size: %d\n", header.getWindow()));
+            details.append(String.format("   Checksum: 0x%04x\n", header.getChecksum()));
+        } else if (packet.contains(UdpPacket.class)) {
+            UdpPacket udpPacket = packet.get(UdpPacket.class);
+            UdpHeader header = udpPacket.getHeader();
+            details.append("User Datagram Protocol:\n");
+            details.append(String.format("   Source Port: %d\n", header.getSrcPort().valueAsInt()));
+            details.append(String.format("   Destination Port: %d\n", header.getDstPort().valueAsInt()));
+            details.append(String.format("   Length: %d\n", header.getLength()));
+            details.append(String.format("   Checksum: 0x%04x\n", header.getChecksum()));
+        }
+
+        return details.toString();
     }
 }

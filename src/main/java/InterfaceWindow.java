@@ -20,6 +20,7 @@ public class InterfaceWindow extends JFrame implements ActionListener {
     private PacketCapturing packetCapturing;// Backend instance
     private JTable packetList;
     private JTextArea hexdataInfo;
+    private JTextArea packetInformation;
 
 
     public InterfaceWindow() {
@@ -53,10 +54,17 @@ public class InterfaceWindow extends JFrame implements ActionListener {
         panel.add(filterLabel);
 
         JComboBox<String> protocolList = new JComboBox<>();
-        protocolList.addItem("");
+        protocolList.addItem("All");
         protocolList.addItem("TCP");
         protocolList.addItem("UDP");
-        protocolList.setBounds(560, 20, 150, 20); // Positioned to the right of the filter label
+        protocolList.setBounds(560, 20, 150, 20);
+        protocolList.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                String selectedProtocol = (String) protocolList.getSelectedItem();
+                packetCapturing.setProtocolFilter(selectedProtocol);
+            }
+        });
         panel.add(protocolList);
 
         // Button
@@ -95,13 +103,54 @@ public class InterfaceWindow extends JFrame implements ActionListener {
         start.setBounds(825, 20, 100, 20);
         start.setBackground(Color.RED);
         start.setForeground(Color.WHITE);
+        start.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                packetCapturing.stopCapturing();
+            }
+        });
         panel.add(start);
 
-        JButton stop = new JButton("Save");
-        stop.setBounds(930, 20, 100, 20);
-        stop.setBackground(Color.GREEN);
-        stop.setForeground(Color.WHITE);
-        panel.add(stop);
+        JButton save = new JButton("Save");
+        save.setBounds(930, 20, 100, 20);
+        save.setBackground(Color.GREEN);
+        save.setForeground(Color.WHITE);
+        save.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                try {
+                    if (!packetCapturing.isCapturing()) {  // Use the new method
+                        JOptionPane.showMessageDialog(InterfaceWindow.this,
+                            "Please start capturing packets first",
+                            "No Capture Active",
+                            JOptionPane.WARNING_MESSAGE);
+                        return;
+                    }
+                    
+                    packetCapturing.saveCapture();
+                    JOptionPane.showMessageDialog(InterfaceWindow.this, 
+                        "Packets saved to out.pcap file", 
+                        "Save Successful", 
+                        JOptionPane.INFORMATION_MESSAGE);
+                } catch (NotOpenException ex) {
+                    JOptionPane.showMessageDialog(InterfaceWindow.this,
+                        ex.getMessage(),
+                        "Save Error",
+                        JOptionPane.ERROR_MESSAGE);
+                } catch (PcapNativeException ex) {
+                    JOptionPane.showMessageDialog(InterfaceWindow.this,
+                        "Error accessing network interface: " + ex.getMessage(),
+                        "Save Error",
+                        JOptionPane.ERROR_MESSAGE);
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(InterfaceWindow.this,
+                        "Unexpected error while saving: " + ex.getMessage(),
+                        "Save Error",
+                        JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        });
+        panel.add(save);
 
         // JTable
         String[] columns = {"No.", "Length", "Source", "Destination", "Protocol"};
@@ -116,7 +165,9 @@ public class InterfaceWindow extends JFrame implements ActionListener {
                 if (selectedRow >= 0) {
                     Packet packet = packetCapturing.getPacket(selectedRow);
                     if (packet != null) {
+                        // Update both hex and packet information
                         hexdataInfo.setText(byteArrayToHex(packet.getRawData()));
+                        packetInformation.setText(packetCapturing.getPacketDetails(packet));
                     }
                 }
             }
@@ -146,8 +197,7 @@ public class InterfaceWindow extends JFrame implements ActionListener {
         packetInfo.setBounds(405, 470, 150, 30);
         panel.add(packetInfo);
 
-        JTextArea packetInformation = new JTextArea();
-        packetInformation.setBounds(400, 500, 300, 250);
+        packetInformation = new JTextArea();
         packetInformation.setEditable(false);
         JScrollPane packetScroll = new JScrollPane(packetInformation);
         packetScroll.setBounds(400, 500, 300, 250);
