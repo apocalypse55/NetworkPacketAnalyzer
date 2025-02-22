@@ -21,206 +21,235 @@ public class InterfaceWindow extends JFrame implements ActionListener {
     private JTable packetList;
     private JTextArea hexdataInfo;
     private JTextArea packetInformation;
-
+    private JTextArea interfaceInfo;  // Add this field
+    private JTextField filterTextField;  // Add this field
+    private JPanel panel;  // Add this field
 
     public InterfaceWindow() {
-        // Create a panel to hold components
-        JPanel panel = new JPanel();
-        panel.setLayout(null); // Use null layout for manual positioning
-        panel.setBounds(0, 0, 1200, 1000);
-        add(panel);
+        super("Network Packet Analyzer");
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setSize(1300, 800);  // Adjusted height
+        setLocationRelativeTo(null);
 
-        // Instantiate Backend
-        backEnd = new NetworkInterfaceInfo();
-        packetCapturing = new PacketCapturing(backEnd);
-
-
-
-        // Top JComboBox (Network List)
+        panel = new JPanel();
+        panel.setLayout(null);
+        
+        // Network Interface Selection
         JLabel networkLabel = new JLabel("Select Network:");
-        networkLabel.setBounds(30, 20, 100, 20); // Positioned on the left
+        networkLabel.setBounds(10, 20, 100, 20);
         panel.add(networkLabel);
 
-        networkList = new JComboBox<>(); // Initialize as class-level variable
-        networkList.setBounds(150, 20, 300, 20); // Positioned on the left
+        networkList = new JComboBox<>();
+        networkList.setBounds(110, 20, 250, 20);
         panel.add(networkList);
 
-        // Add ActionListener to networkList
-        networkList.addActionListener(this); // Register 'this' as the ActionListener
-
-        // Filter Label and Protocol List (Moved to the right)
-        JLabel filterLabel = new JLabel("Filter:");
-        filterLabel.setBounds(500, 20, 50, 20); // Positioned on the right
-        panel.add(filterLabel);
+        // Protocol Filter
+        JLabel protocolFilterLabel = new JLabel("Protocol Filter:");
+        protocolFilterLabel.setBounds(370, 20, 100, 20);
+        panel.add(protocolFilterLabel);
 
         JComboBox<String> protocolList = new JComboBox<>();
         protocolList.addItem("All");
         protocolList.addItem("TCP");
         protocolList.addItem("UDP");
-        protocolList.setBounds(560, 20, 150, 20);
-        protocolList.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                String selectedProtocol = (String) protocolList.getSelectedItem();
-                packetCapturing.setProtocolFilter(selectedProtocol);
-            }
+        protocolList.setBounds(470, 20, 100, 20);
+        protocolList.addActionListener(e -> {
+            String selectedProtocol = (String) protocolList.getSelectedItem();
+            packetCapturing.setProtocolFilter(selectedProtocol);
         });
         panel.add(protocolList);
 
-        // Button
+        // BPF Filter
+        JLabel bpfFilterLabel = new JLabel("BPF Filter:");
+        bpfFilterLabel.setBounds(580, 20, 70, 20);
+        panel.add(bpfFilterLabel);
+
+        filterTextField = new JTextField();
+        filterTextField.setBounds(650, 20, 150, 20);
+        filterTextField.setToolTipText("Enter BPF filter (e.g., 'tcp port 80' or 'host 192.168.1.1')");
+        panel.add(filterTextField);
+
+        // Help button
+        JButton helpButton = new JButton("?");
+        helpButton.setBounds(805, 20, 45, 20);
+        helpButton.addActionListener(e -> showFilterHelp());
+        panel.add(helpButton);
+
+        // Capture button
         JButton capture = new JButton("Capture");
-        capture.setBounds(720, 20, 100, 20);
+        capture.setBounds(860, 20, 100, 20);
         capture.setBackground(Color.BLUE);
         capture.setForeground(Color.WHITE);
-        capture.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                // Get the selected network
-                String selectedNetwork = (String) networkList.getSelectedItem();
-                if(selectedNetwork == null){
-                    return;
+        capture.addActionListener(e -> {
+            try {
+                String filterExpression = filterTextField.getText().trim();
+                PcapNetworkInterface device = backEnd.getDevice(networkList.getSelectedItem().toString());
+                if (device != null) {
+                    packetCapturing.startCapturing(device, packetList, filterExpression);
                 }
-                try {
-                    PcapNetworkInterface device = backEnd.getDevice(selectedNetwork);
-                    if (device != null) {
-                        // Start capturing packets
-                        packetCapturing.startCapturing(device, packetList);
-                        System.out.println("Captured list");
-                    } else {
-                        JOptionPane.showMessageDialog(InterfaceWindow.this, "No device found.");
-                    }
-                } catch (NotOpenException ex) {
-                    throw new RuntimeException(ex);
-                } catch (PcapNativeException ex) {
-                    throw new RuntimeException(ex);
-                }
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this,
+                    "Error starting capture: " + ex.getMessage(),
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE);
             }
         });
-
         panel.add(capture);
 
-        JButton start = new JButton("Stop");
-        start.setBounds(825, 20, 100, 20);
-        start.setBackground(Color.RED);
-        start.setForeground(Color.WHITE);
-        start.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                packetCapturing.stopCapturing();
-            }
-        });
-        panel.add(start);
+        // Stop button
+        JButton stop = new JButton("Stop");
+        stop.setBounds(970, 20, 100, 20);
+        stop.setBackground(Color.RED);
+        stop.setForeground(Color.WHITE);
+        stop.addActionListener(e -> packetCapturing.stopCapturing());
+        panel.add(stop);
 
+        // Save button
         JButton save = new JButton("Save");
-        save.setBounds(930, 20, 100, 20);
+        save.setBounds(1080, 20, 100, 20);
         save.setBackground(Color.GREEN);
         save.setForeground(Color.WHITE);
-        save.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                try {
-                    if (!packetCapturing.isCapturing()) {  // Use the new method
-                        JOptionPane.showMessageDialog(InterfaceWindow.this,
-                            "Please start capturing packets first",
-                            "No Capture Active",
-                            JOptionPane.WARNING_MESSAGE);
-                        return;
-                    }
-                    
-                    packetCapturing.saveCapture();
-                    JOptionPane.showMessageDialog(InterfaceWindow.this, 
-                        "Packets saved to out.pcap file", 
-                        "Save Successful", 
-                        JOptionPane.INFORMATION_MESSAGE);
-                } catch (NotOpenException ex) {
-                    JOptionPane.showMessageDialog(InterfaceWindow.this,
-                        ex.getMessage(),
-                        "Save Error",
-                        JOptionPane.ERROR_MESSAGE);
-                } catch (PcapNativeException ex) {
-                    JOptionPane.showMessageDialog(InterfaceWindow.this,
-                        "Error accessing network interface: " + ex.getMessage(),
-                        "Save Error",
-                        JOptionPane.ERROR_MESSAGE);
-                } catch (Exception ex) {
-                    JOptionPane.showMessageDialog(InterfaceWindow.this,
-                        "Unexpected error while saving: " + ex.getMessage(),
-                        "Save Error",
-                        JOptionPane.ERROR_MESSAGE);
+        save.addActionListener(e -> {
+            try {
+                if (!packetCapturing.isCapturing()) {
+                    JOptionPane.showMessageDialog(this,
+                        "Please start capturing packets first",
+                        "No Capture Active",
+                        JOptionPane.WARNING_MESSAGE);
+                    return;
                 }
+                
+                packetCapturing.saveCapture();
+                JOptionPane.showMessageDialog(this, 
+                    "Packets saved to out.pcap file", 
+                    "Save Successful", 
+                    JOptionPane.INFORMATION_MESSAGE);
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this,
+                    "Error saving packets: " + ex.getMessage(),
+                    "Save Error",
+                    JOptionPane.ERROR_MESSAGE);
             }
         });
         panel.add(save);
 
-        // JTable
-        String[] columns = {"No.", "Length", "Source", "Destination", "Protocol"};
-        DefaultTableModel model = new DefaultTableModel(columns, 0);
+        // Packet List Table
+        String[] columnNames = {"No.", "Length", "Source", "Destination", "Protocol"};
+        DefaultTableModel model = new DefaultTableModel(columnNames, 0);
         packetList = new JTable(model);
-        packetList.setBounds(30, 50, 1030, 400);
-        
-        // Add selection listener to the table
+        JScrollPane scrollPane = new JScrollPane(packetList);
+        scrollPane.setBounds(10, 50, 1260, 400);  // Adjusted width
+        panel.add(scrollPane);
+
+        // All information panels will start at the same y-coordinate
+        int infoStartY = 460;
+        int infoPanelHeight = 250;
+
+        // Interface Information (Left)
+        JLabel interfaceLabel = new JLabel("Interface Information:");
+        interfaceLabel.setBounds(10, infoStartY, 150, 20);
+        panel.add(interfaceLabel);
+
+        interfaceInfo = new JTextArea();
+        interfaceInfo.setEditable(false);
+        JScrollPane interfaceScroll = new JScrollPane(interfaceInfo);
+        interfaceScroll.setBounds(10, infoStartY + 20, 400, infoPanelHeight);
+        panel.add(interfaceScroll);
+
+        // Packet Information (Middle)
+        JLabel packetInfoLabel = new JLabel("Packet Information:");
+        packetInfoLabel.setBounds(420, infoStartY, 150, 20);
+        panel.add(packetInfoLabel);
+
+        packetInformation = new JTextArea();
+        packetInformation.setEditable(false);
+        JScrollPane packetScroll = new JScrollPane(packetInformation);
+        packetScroll.setBounds(420, infoStartY + 20, 430, infoPanelHeight);
+        panel.add(packetScroll);
+
+        // Hex Data (Right)
+        JLabel hexLabel = new JLabel("Hex Data:");
+        hexLabel.setBounds(860, infoStartY, 100, 20);
+        panel.add(hexLabel);
+
+        hexdataInfo = new JTextArea();
+        hexdataInfo.setEditable(false);
+        JScrollPane hexScroll = new JScrollPane(hexdataInfo);
+        hexScroll.setBounds(860, infoStartY + 20, 410, infoPanelHeight);
+        panel.add(hexScroll);
+
+        // Table Selection Listener
         packetList.getSelectionModel().addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) {  // Only react to the final event
+            if (!e.getValueIsAdjusting()) {
                 int selectedRow = packetList.getSelectedRow();
                 if (selectedRow >= 0) {
                     Packet packet = packetCapturing.getPacket(selectedRow);
                     if (packet != null) {
-                        // Update both hex and packet information
                         hexdataInfo.setText(byteArrayToHex(packet.getRawData()));
                         packetInformation.setText(packetCapturing.getPacketDetails(packet));
                     }
                 }
             }
         });
-        
-        JScrollPane scroll = new JScrollPane(packetList);
-        scroll.setBounds(30, 60, 1030, 400);
-        panel.add(scroll);
 
+        // Network List Selection Listener
+        networkList.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                String selectedInterface = (String) networkList.getSelectedItem();
+                try {
+                    PcapNetworkInterface device = backEnd.getDevice(selectedInterface);
+                    if (device != null) {
+                        StringBuilder info = new StringBuilder();
+                        
+                        // MAC Address
+                        if (!device.getLinkLayerAddresses().isEmpty()) {
+                            info.append(String.format("Interface MacAddress --> %s\n", 
+                                device.getLinkLayerAddresses().get(0)));
+                        }
 
-        // Text areas
-        JLabel interfaceInfo = new JLabel("Interface Info");
-        interfaceInfo.setFont(interfaceInfo.getFont().deriveFont(Font.BOLD, 14f));
-        interfaceInfo.setBounds(55, 470, 100, 30);
-        panel.add(interfaceInfo);
+                        // IP Addresses and Network Information
+                        for (PcapAddress addr : device.getAddresses()) {
+                            if (addr.getAddress() != null) {
+                                // IP Address
+                                info.append(String.format("Interface Address --> %s\n", 
+                                    addr.getAddress().getHostAddress()));
+                                
+                                // Subnet Mask
+                                if (addr.getNetmask() != null) {
+                                    info.append(String.format("Interface Subnet --> %s\n", 
+                                        addr.getNetmask().getHostAddress()));
+                                }
+                                
+                                // Broadcast Address
+                                if (addr.getBroadcastAddress() != null) {
+                                    info.append(String.format("Interface Broadcast --> %s\n", 
+                                        addr.getBroadcastAddress().getHostAddress()));
+                                }
+                            }
+                        }
 
-        textInterfaceInfo = new JTextArea(); // Class-level variable
-        textInterfaceInfo.setBounds(50, 500, 300, 250);
-        textInterfaceInfo.setEditable(false);
-        JScrollPane textScroll = new JScrollPane(textInterfaceInfo);
-        textScroll.setBounds(50, 500, 300, 250);
-        panel.add(textScroll);
-//        panel.add(textInterfaceInfo);
+                        // Additional Interface Information
+                        info.append(String.format("Interface Description: %s\n", device.getDescription()));
+                        info.append(String.format("Interface Type: %s\n", 
+                            device.getLinkLayerAddresses().isEmpty() ? "Unknown" : "Ethernet"));
+                        info.append(String.format("Loopback: %s\n", device.isLoopBack() ? "Yes" : "No"));
+                        info.append(String.format("Up and Running: %s\n", device.isRunning() ? "Yes" : "No"));
 
-        JLabel packetInfo = new JLabel("Packet Information");
-        packetInfo.setFont(packetInfo.getFont().deriveFont(Font.BOLD, 14f));
-        packetInfo.setBounds(405, 470, 150, 30);
-        panel.add(packetInfo);
+                        interfaceInfo.setText(info.toString());
+                    }
+                } catch (Exception ex) {
+                    interfaceInfo.setText("Error getting interface information: " + ex.getMessage());
+                }
+            }
+        });
 
-        packetInformation = new JTextArea();
-        packetInformation.setEditable(false);
-        JScrollPane packetScroll = new JScrollPane(packetInformation);
-        packetScroll.setBounds(400, 500, 300, 250);
-        panel.add(packetScroll);
-
-
-        JLabel hexData = new JLabel("Hex Data");
-        hexData.setFont(hexData.getFont().deriveFont(Font.BOLD, 14f));
-        hexData.setBounds(755, 470, 100, 30);
-        panel.add(hexData);
-
-        hexdataInfo = new JTextArea();
-        hexdataInfo.setBounds(750, 500, 300, 250);
-        hexdataInfo.setEditable(false);
-        JScrollPane hexScroll = new JScrollPane(hexdataInfo);
-        hexScroll.setBounds(750, 500, 300, 250);
-        panel.add(hexScroll);
-
-        // Frame settings
-        setSize(1200, 800); // Adjusted to match content
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setLayout(null);
+        add(panel);
         setVisible(true);
+
+        // Instantiate Backend
+        backEnd = new NetworkInterfaceInfo();
+        packetCapturing = new PacketCapturing(backEnd);
 
         // Populate Network List from Backend
         populateNetworkList();
@@ -260,6 +289,34 @@ public class InterfaceWindow extends JFrame implements ActionListener {
             if (i % 16 == 15) sb.append("\n");  // New line every 16 bytes
         }
         return sb.toString();
+    }
+
+    private void showFilterHelp() {
+        String helpText = 
+            "BPF Filter Examples:\n\n" +
+            "- tcp port 80                 (HTTP traffic)\n" +
+            "- host 192.168.1.1           (Traffic to/from specific host)\n" +
+            "- src host 192.168.1.1       (Traffic from specific host)\n" +
+            "- dst port 443               (HTTPS destination traffic)\n" +
+            "- tcp or udp                 (TCP or UDP traffic)\n" +
+            "- ip proto \\icmp             (ICMP traffic)\n" +
+            "- net 192.168.0.0/24         (Traffic in subnet)\n" +
+            "- port 53                    (DNS traffic)\n" +
+            "- tcp[tcpflags] & tcp-syn != 0   (TCP SYN packets)\n\n" +
+            "Operators: and, or, not\n" +
+            "You can combine filters using parentheses";
+
+        JTextArea textArea = new JTextArea(helpText);
+        textArea.setEditable(false);
+        textArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
+        
+        JScrollPane scrollPane = new JScrollPane(textArea);
+        scrollPane.setPreferredSize(new Dimension(400, 300));
+
+        JOptionPane.showMessageDialog(this,
+            scrollPane,
+            "BPF Filter Syntax Help",
+            JOptionPane.INFORMATION_MESSAGE);
     }
 
     public static void main(String[] args) {

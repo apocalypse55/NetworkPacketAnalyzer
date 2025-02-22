@@ -5,6 +5,7 @@ import org.pcap4j.util.MacAddress;
 import org.pcap4j.packet.IpV4Packet.IpV4Header;
 import org.pcap4j.packet.TcpPacket.TcpHeader;
 import org.pcap4j.packet.UdpPacket.UdpHeader;
+import org.pcap4j.core.BpfProgram.BpfCompileMode;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -27,7 +28,7 @@ public class PacketCapturing {
         this.networkInfo = networkInfo;
     }
 
-    public void startCapturing(PcapNetworkInterface device, JTable packetList) throws PcapNativeException, NotOpenException {
+    public void startCapturing(PcapNetworkInterface device, JTable packetList, String filterExpression) throws PcapNativeException, NotOpenException {
         try {
             isRunning = true;
             int snapshotLength = 65536;
@@ -38,6 +39,11 @@ public class PacketCapturing {
                     .promiscuousMode(PcapNetworkInterface.PromiscuousMode.PROMISCUOUS)
                     .timeoutMillis(readTimeout)
                     .build();
+
+            // Apply BPF filter if provided
+            if (filterExpression != null && !filterExpression.isEmpty()) {
+                handle.setFilter(filterExpression, BpfCompileMode.OPTIMIZE);
+            }
 
             // Check if this is a wireless interface
             if (device.getLinkLayerAddresses() != null && !device.getLinkLayerAddresses().isEmpty()) {
