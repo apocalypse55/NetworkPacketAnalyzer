@@ -13,7 +13,8 @@ import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.util.List;
 
-public class InterfaceWindow extends JFrame implements ActionListener {
+public class
+InterfaceWindow extends JFrame implements ActionListener {
     private JComboBox<String> networkList; // Dropdown for network interfaces
     private JTextArea textInterfaceInfo;  // Area to display interface details
     private NetworkInterfaceInfo backEnd;
@@ -132,6 +133,14 @@ public class InterfaceWindow extends JFrame implements ActionListener {
             }
         });
         panel.add(save);
+
+        // Add Graph Visualization button
+        JButton graphButton = new JButton("Show Traffic Graph");
+        graphButton.setBounds(1190, 20, 150, 20);
+        graphButton.setBackground(new Color(147, 112, 219)); // Purple color
+        graphButton.setForeground(Color.WHITE);
+        graphButton.addActionListener(e -> packetCapturing.showGraphVisualization());
+        panel.add(graphButton);
 
         // Packet List Table
         String[] columnNames = {"No.", "Length", "Source", "Destination", "Protocol"};

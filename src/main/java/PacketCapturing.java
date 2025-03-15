@@ -16,6 +16,7 @@ import java.util.List;
 
 public class PacketCapturing {
 
+    private NetworkGraphGUI graphGUI;
     private BlockingQueue<Packet> packetQueue = new LinkedBlockingQueue<>();
     private List<Packet> capturedPackets = new ArrayList<>();
     private NetworkInterfaceInfo networkInfo;
@@ -23,14 +24,19 @@ public class PacketCapturing {
     private volatile boolean isRunning = false;
     private PcapHandle handle;
     private PcapDumper dumper;
+    private PcapNetworkInterface currentDevice;
+    private JTable currentPacketList;
 
     public PacketCapturing(NetworkInterfaceInfo networkInfo) {
         this.networkInfo = networkInfo;
+        this.graphGUI = new NetworkGraphGUI(this);
     }
 
     public void startCapturing(PcapNetworkInterface device, JTable packetList, String filterExpression) throws PcapNativeException, NotOpenException {
         try {
             isRunning = true;
+            currentDevice = device;
+            currentPacketList = packetList;
             int snapshotLength = 65536;
             int readTimeout = 50;
 
@@ -92,10 +98,7 @@ public class PacketCapturing {
             // First, check if it's a raw 802.11 frame
             if (packet instanceof EthernetPacket) {
                 EthernetPacket ethernetPacket = (EthernetPacket) packet;
-                sourceAddress = ethernetPacket.getHeader().getSrcAddr().toString();
-                destAddress = ethernetPacket.getHeader().getDstAddr().toString();
-                protocol = "802.11";
-
+                
                 // Try to get the encapsulated IP packet
                 if (ethernetPacket.getPayload() instanceof IpPacket) {
                     IpPacket ipPacket = (IpPacket) ethernetPacket.getPayload();
@@ -119,11 +122,10 @@ public class PacketCapturing {
                 protocol = getEncapsulatedProtocol(ipPacket);
             }
 
-            // Log packet details for debugging
-            System.out.println("Packet type: " + packet.getClass().getSimpleName());
-            System.out.println("Source: " + sourceAddress);
-            System.out.println("Destination: " + destAddress);
-            System.out.println("Protocol: " + protocol);
+            // Update the graph visualization with detailed packet info
+            if (!sourceAddress.equals("Unknown") && !destAddress.equals("Unknown")) {
+                graphGUI.updateTraffic(packet, sourceAddress, destAddress, protocol);
+            }
 
             // Only add packets that match the filter
             if (shouldDisplayPacket(protocol)) {
@@ -185,6 +187,63 @@ public class PacketCapturing {
         }
         if (handle != null && handle.isOpen()) {
             handle.close();
+        }
+    }
+
+    public void resumeCapturing() {
+        try {
+            if (currentDevice != null) {
+                // Reopen the handle with the same settings
+                handle = new PcapHandle.Builder(currentDevice.getName())
+                        .snaplen(65536)
+                        .promiscuousMode(PcapNetworkInterface.PromiscuousMode.PROMISCUOUS)
+                        .timeoutMillis(50)
+                        .build();
+                
+                // Reapply any existing filter
+                if (handle.getFilteringExpression() != null && !handle.getFilteringExpression().isEmpty()) {
+                    handle.setFilter(handle.getFilteringExpression(), BpfCompileMode.OPTIMIZE);
+                }
+
+                // Create new dumper with append mode
+                dumper = handle.dumpOpen("out.pcap");  // This will append to existing file
+                
+                isRunning = true;
+
+                // Create packet listener outside the loop
+                PacketListener listener = new PacketListener() {
+                    @Override
+                    public void gotPacket(Packet packet) {
+                        try {
+                            packetQueue.put(packet);
+                            // Update both the table and graph
+                            SwingUtilities.invokeLater(() -> updatePacketTable(packet, currentPacketList));
+                            dumper.dump(packet, handle.getTimestamp());
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+                };
+
+                // Start capture thread
+                new Thread(() -> {
+                    try {
+                        while (isRunning && handle.isOpen()) {
+                            handle.loop(1, listener);
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }).start();
+            } else {
+                throw new IllegalStateException("No network interface was previously captured");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(null,
+                "Error resuming capture: " + e.getMessage(),
+                "Resume Error",
+                JOptionPane.ERROR_MESSAGE);
         }
     }
 
@@ -285,5 +344,9 @@ public class PacketCapturing {
         }
 
         return details.toString();
+    }
+
+    public void showGraphVisualization() {
+        graphGUI.setVisible(true);
     }
 }
