@@ -56,7 +56,7 @@ public class NetworkGraphGUI extends JFrame {
         pausedPacketCounts = new ArrayList<>();
         pausedTimeLabels = new ArrayList<>();
         pausedPacketInfoList = new ArrayList<>();
-        
+
         setSize(1000, 700);
         setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
@@ -70,7 +70,7 @@ public class NetworkGraphGUI extends JFrame {
             }
         };
         graphPanel.setBackground(Color.WHITE);
-        
+
         // Add mouse motion listener for tooltips
         graphPanel.addMouseMotionListener(new MouseMotionAdapter() {
             @Override
@@ -79,10 +79,10 @@ public class NetworkGraphGUI extends JFrame {
                 graphPanel.repaint();
             }
         });
-        
+
         // Create control panel
         JPanel controlPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-        
+
         // Time range selector
         String[] timeRanges = {"10 sec", "30 sec", "1 min", "2 min", "5 min"};
         JComboBox<String> timeRangeCombo = new JComboBox<>(timeRanges);
@@ -97,7 +97,7 @@ public class NetworkGraphGUI extends JFrame {
                 case "5 min": MAX_POINTS = 300; break;
             }
         });
-        
+
         // Toggle Capture button
         captureButton = new JButton("Stop Capture");
         captureButton.setBackground(Color.RED);
@@ -133,7 +133,7 @@ public class NetworkGraphGUI extends JFrame {
         int width = graphPanel.getWidth();
         int height = graphPanel.getHeight();
         int padding = 60;
-        
+
         // Draw title
         g2.setFont(new Font("Arial", Font.BOLD, 16));
         g2.setColor(Color.BLACK);
@@ -197,17 +197,17 @@ public class NetworkGraphGUI extends JFrame {
         // Draw threshold lines
         float[] dash = {5f};
         g2.setStroke(new BasicStroke(1f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10.0f, dash, 0.0f));
-        
+
         // Medium traffic threshold
         int y = height - padding - (TRAFFIC_THRESHOLD_MEDIUM * (height - 2 * padding) / maxCount);
         g2.setColor(MEDIUM_TRAFFIC);
         g2.drawLine(padding, y, width - padding, y);
-        
+
         // High traffic threshold
         y = height - padding - (TRAFFIC_THRESHOLD_HIGH * (height - 2 * padding) / maxCount);
         g2.setColor(HIGH_TRAFFIC);
         g2.drawLine(padding, y, width - padding, y);
-        
+
         g2.setStroke(new BasicStroke(1f)); // Reset stroke
     }
 
@@ -218,7 +218,7 @@ public class NetworkGraphGUI extends JFrame {
         for (int i = 0; i < packetCounts.size(); i++) {
             int x = padding + i * xStep;
             int y = height - padding - (packetCounts.get(i) * (height - 2 * padding) / maxCount);
-            
+
             if (first) {
                 path.moveTo(x, y);
                 first = false;
@@ -247,21 +247,21 @@ public class NetworkGraphGUI extends JFrame {
         int legendX = width - 150;
         int legendY = 50;
         int boxSize = 15;
-        
+
         g2.setFont(new Font("Arial", Font.PLAIN, 12));
-        
+
         // Low traffic
         g2.setColor(LOW_TRAFFIC);
         g2.fillRect(legendX, legendY, boxSize, boxSize);
         g2.setColor(Color.BLACK);
         g2.drawString("Low Traffic", legendX + boxSize + 5, legendY + 12);
-        
+
         // Medium traffic
         g2.setColor(MEDIUM_TRAFFIC);
         g2.fillRect(legendX, legendY + 20, boxSize, boxSize);
         g2.setColor(Color.BLACK);
         g2.drawString("Medium Traffic", legendX + boxSize + 5, legendY + 32);
-        
+
         // High traffic
         g2.setColor(HIGH_TRAFFIC);
         g2.fillRect(legendX, legendY + 40, boxSize, boxSize);
@@ -273,54 +273,54 @@ public class NetworkGraphGUI extends JFrame {
         for (int i = 0; i < packetCounts.size(); i++) {
             int x = padding + i * xStep;
             int y = height - padding - (packetCounts.get(i) * (height - 2 * padding) / maxCount);
-            
+
             // Check if mouse is near this point
             if (mousePosition.distance(x, y) < 10 && i < packetInfoList.size()) {
                 PacketInfo info = packetInfoList.get(i);
-                
+
                 // Create detailed tooltip text
                 StringBuilder tooltip = new StringBuilder();
                 tooltip.append(String.format("Time: %s%n", timeLabels.get(i)));
                 tooltip.append(String.format("Total Packets: %d/sec%n%n", packetCounts.get(i)));
-                
+
                 // Protocol distribution
                 tooltip.append("Protocols:%n");
                 info.protocolCounts.entrySet().stream()
-                    .sorted((e1, e2) -> e2.getValue().compareTo(e1.getValue()))
-                    .limit(3)  // Show top 3 protocols
-                    .forEach(e -> tooltip.append(String.format("  %s: %d%n", e.getKey(), e.getValue())));
-                
+                        .sorted((e1, e2) -> e2.getValue().compareTo(e1.getValue()))
+                        .limit(3)  // Show top 3 protocols
+                        .forEach(e -> tooltip.append(String.format("  %s: %d%n", e.getKey(), e.getValue())));
+
                 tooltip.append("%nTop Sources:%n");
                 info.sourceCounts.entrySet().stream()
-                    .sorted((e1, e2) -> e2.getValue().compareTo(e1.getValue()))
-                    .limit(2)  // Show top 2 sources
-                    .forEach(e -> tooltip.append(String.format("  %s: %d%n", e.getKey(), e.getValue())));
-                
+                        .sorted((e1, e2) -> e2.getValue().compareTo(e1.getValue()))
+                        .limit(2)  // Show top 2 sources
+                        .forEach(e -> tooltip.append(String.format("  %s: %d%n", e.getKey(), e.getValue())));
+
                 tooltip.append("%nTop Destinations:%n");
                 info.destCounts.entrySet().stream()
-                    .sorted((e1, e2) -> e2.getValue().compareTo(e1.getValue()))
-                    .limit(2)  // Show top 2 destinations
-                    .forEach(e -> tooltip.append(String.format("  %s: %d%n", e.getKey(), e.getValue())));
-                
+                        .sorted((e1, e2) -> e2.getValue().compareTo(e1.getValue()))
+                        .limit(2)  // Show top 2 destinations
+                        .forEach(e -> tooltip.append(String.format("  %s: %d%n", e.getKey(), e.getValue())));
+
                 // Draw tooltip background
                 g2.setColor(new Color(255, 255, 220, 230));  // Slightly transparent background
                 FontMetrics fm = g2.getFontMetrics();
                 String[] lines = tooltip.toString().split("\n");
                 int tooltipWidth = Arrays.stream(lines)
-                    .mapToInt(fm::stringWidth)
-                    .max()
-                    .orElse(0) + 20;
+                        .mapToInt(fm::stringWidth)
+                        .max()
+                        .orElse(0) + 20;
                 int tooltipHeight = fm.getHeight() * lines.length + 10;
-                
+
                 // Adjust position to keep tooltip visible
                 int tooltipX = Math.min(x + 10, getWidth() - tooltipWidth - 10);
                 int tooltipY = Math.min(y - 20, getHeight() - tooltipHeight - 10);
-                
+
                 // Draw tooltip box with rounded corners
                 g2.fillRoundRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight, 10, 10);
                 g2.setColor(Color.GRAY);
                 g2.drawRoundRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight, 10, 10);
-                
+
                 // Draw tooltip text
                 g2.setColor(Color.BLACK);
                 int textY = tooltipY + fm.getAscent() + 5;
@@ -372,7 +372,7 @@ public class NetworkGraphGUI extends JFrame {
             PacketInfo currentInfo = new PacketInfo();
             currentInfo.count = currentPacketCount;
             packetInfoList.add(currentInfo);
-            
+
             // Add new data point
             packetCounts.add(currentPacketCount);
             timeLabels.add(LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss")));
@@ -389,8 +389,8 @@ public class NetworkGraphGUI extends JFrame {
 
             // Update statistics
             totalPackets += currentPacketCount;
-            statsLabel.setText(String.format("Total Packets: %d | Current Rate: %d packets/sec | Average Rate: %.2f packets/sec", 
-                totalPackets, currentPacketCount, avgRate));
+            statsLabel.setText(String.format("Total Packets: %d | Current Rate: %d packets/sec | Average Rate: %.2f packets/sec",
+                    totalPackets, currentPacketCount, avgRate));
 
             // Reset counter for next interval
             currentPacketCount = 0;
@@ -402,7 +402,7 @@ public class NetworkGraphGUI extends JFrame {
 
     public void updateTraffic(Packet packet, String sourceAddress, String destAddress, String protocol) {
         currentPacketCount++;
-        
+
         // Update current interval's packet information
         if (!packetInfoList.isEmpty()) {
             PacketInfo currentInfo = packetInfoList.get(packetInfoList.size() - 1);

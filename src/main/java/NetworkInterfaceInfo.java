@@ -55,7 +55,7 @@ public class NetworkInterfaceInfo {
         StringBuilder details = new StringBuilder();
         details.append("Interface Name: ").append(iface.getName()).append("\n");
         details.append("Description: ").append(iface.getDescription()).append("\n\n");
-        
+
         details.append("IPv4 Addresses:\n");
         details.append("---------------\n");
         for (PcapAddress addr : iface.getAddresses()) {

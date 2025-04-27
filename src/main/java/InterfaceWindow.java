@@ -34,7 +34,7 @@ InterfaceWindow extends JFrame implements ActionListener {
 
         panel = new JPanel();
         panel.setLayout(null);
-        
+
         // Network Interface Selection
         JLabel networkLabel = new JLabel("Select Network:");
         networkLabel.setBounds(10, 20, 100, 20);
@@ -90,9 +90,9 @@ InterfaceWindow extends JFrame implements ActionListener {
                 }
             } catch (Exception ex) {
                 JOptionPane.showMessageDialog(this,
-                    "Error starting capture: " + ex.getMessage(),
-                    "Error",
-                    JOptionPane.ERROR_MESSAGE);
+                        "Error starting capture: " + ex.getMessage(),
+                        "Error",
+                        JOptionPane.ERROR_MESSAGE);
             }
         });
         panel.add(capture);
@@ -114,22 +114,22 @@ InterfaceWindow extends JFrame implements ActionListener {
             try {
                 if (!packetCapturing.isCapturing()) {
                     JOptionPane.showMessageDialog(this,
-                        "Please start capturing packets first",
-                        "No Capture Active",
-                        JOptionPane.WARNING_MESSAGE);
+                            "Please start capturing packets first",
+                            "No Capture Active",
+                            JOptionPane.WARNING_MESSAGE);
                     return;
                 }
-                
+
                 packetCapturing.saveCapture();
-                JOptionPane.showMessageDialog(this, 
-                    "Packets saved to out.pcap file", 
-                    "Save Successful", 
-                    JOptionPane.INFORMATION_MESSAGE);
+                JOptionPane.showMessageDialog(this,
+                        "Packets saved to out.pcap file",
+                        "Save Successful",
+                        JOptionPane.INFORMATION_MESSAGE);
             } catch (Exception ex) {
                 JOptionPane.showMessageDialog(this,
-                    "Error saving packets: " + ex.getMessage(),
-                    "Save Error",
-                    JOptionPane.ERROR_MESSAGE);
+                        "Error saving packets: " + ex.getMessage(),
+                        "Save Error",
+                        JOptionPane.ERROR_MESSAGE);
             }
         });
         panel.add(save);
@@ -210,38 +210,38 @@ InterfaceWindow extends JFrame implements ActionListener {
                     PcapNetworkInterface device = backEnd.getDevice(selectedInterface);
                     if (device != null) {
                         StringBuilder info = new StringBuilder();
-                        
+
                         // MAC Address
                         if (!device.getLinkLayerAddresses().isEmpty()) {
-                            info.append(String.format("Interface MacAddress --> %s\n", 
-                                device.getLinkLayerAddresses().get(0)));
+                            info.append(String.format("Interface MacAddress --> %s\n",
+                                    device.getLinkLayerAddresses().get(0)));
                         }
 
                         // IP Addresses and Network Information
                         for (PcapAddress addr : device.getAddresses()) {
                             if (addr.getAddress() != null) {
                                 // IP Address
-                                info.append(String.format("Interface Address --> %s\n", 
-                                    addr.getAddress().getHostAddress()));
-                                
+                                info.append(String.format("Interface Address --> %s\n",
+                                        addr.getAddress().getHostAddress()));
+
                                 // Subnet Mask
                                 if (addr.getNetmask() != null) {
-                                    info.append(String.format("Interface Subnet --> %s\n", 
-                                        addr.getNetmask().getHostAddress()));
+                                    info.append(String.format("Interface Subnet --> %s\n",
+                                            addr.getNetmask().getHostAddress()));
                                 }
-                                
+
                                 // Broadcast Address
                                 if (addr.getBroadcastAddress() != null) {
-                                    info.append(String.format("Interface Broadcast --> %s\n", 
-                                        addr.getBroadcastAddress().getHostAddress()));
+                                    info.append(String.format("Interface Broadcast --> %s\n",
+                                            addr.getBroadcastAddress().getHostAddress()));
                                 }
                             }
                         }
 
                         // Additional Interface Information
                         info.append(String.format("Interface Description: %s\n", device.getDescription()));
-                        info.append(String.format("Interface Type: %s\n", 
-                            device.getLinkLayerAddresses().isEmpty() ? "Unknown" : "Ethernet"));
+                        info.append(String.format("Interface Type: %s\n",
+                                device.getLinkLayerAddresses().isEmpty() ? "Unknown" : "Ethernet"));
                         info.append(String.format("Loopback: %s\n", device.isLoopBack() ? "Yes" : "No"));
                         info.append(String.format("Up and Running: %s\n", device.isRunning() ? "Yes" : "No"));
 
@@ -301,31 +301,31 @@ InterfaceWindow extends JFrame implements ActionListener {
     }
 
     private void showFilterHelp() {
-        String helpText = 
-            "BPF Filter Examples:\n\n" +
-            "- tcp port 80                 (HTTP traffic)\n" +
-            "- host 192.168.1.1           (Traffic to/from specific host)\n" +
-            "- src host 192.168.1.1       (Traffic from specific host)\n" +
-            "- dst port 443               (HTTPS destination traffic)\n" +
-            "- tcp or udp                 (TCP or UDP traffic)\n" +
-            "- ip proto \\icmp             (ICMP traffic)\n" +
-            "- net 192.168.0.0/24         (Traffic in subnet)\n" +
-            "- port 53                    (DNS traffic)\n" +
-            "- tcp[tcpflags] & tcp-syn != 0   (TCP SYN packets)\n\n" +
-            "Operators: and, or, not\n" +
-            "You can combine filters using parentheses";
+        String helpText =
+                "BPF Filter Examples:\n\n" +
+                        "- tcp port 80                 (HTTP traffic)\n" +
+                        "- host 192.168.1.1           (Traffic to/from specific host)\n" +
+                        "- src host 192.168.1.1       (Traffic from specific host)\n" +
+                        "- dst port 443               (HTTPS destination traffic)\n" +
+                        "- tcp or udp                 (TCP or UDP traffic)\n" +
+                        "- ip proto \\icmp             (ICMP traffic)\n" +
+                        "- net 192.168.0.0/24         (Traffic in subnet)\n" +
+                        "- port 53                    (DNS traffic)\n" +
+                        "- tcp[tcpflags] & tcp-syn != 0   (TCP SYN packets)\n\n" +
+                        "Operators: and, or, not\n" +
+                        "You can combine filters using parentheses";
 
         JTextArea textArea = new JTextArea(helpText);
         textArea.setEditable(false);
         textArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
-        
+
         JScrollPane scrollPane = new JScrollPane(textArea);
         scrollPane.setPreferredSize(new Dimension(400, 300));
 
         JOptionPane.showMessageDialog(this,
-            scrollPane,
-            "BPF Filter Syntax Help",
-            JOptionPane.INFORMATION_MESSAGE);
+                scrollPane,
+                "BPF Filter Syntax Help",
+                JOptionPane.INFORMATION_MESSAGE);
     }
 
     public static void main(String[] args) {
