@@ -6,6 +6,7 @@ import org.pcap4j.packet.IpV4Packet.IpV4Header;
 import org.pcap4j.packet.TcpPacket.TcpHeader;
 import org.pcap4j.packet.UdpPacket.UdpHeader;
 import org.pcap4j.core.BpfProgram.BpfCompileMode;
+import org.pcap4j.core.NotOpenException;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
@@ -13,6 +14,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.ArrayList;
 import java.util.List;
+import java.nio.charset.StandardCharsets;
 
 public class PacketCapturing {
 
@@ -22,15 +24,18 @@ public class PacketCapturing {
     private NetworkInterfaceInfo networkInfo;
     private String protocolFilter = "All";
     private volatile boolean isRunning = false;
+    private volatile boolean isPaused = false;
     private PcapHandle handle;
     private PcapDumper dumper;
     private PcapNetworkInterface currentDevice;
     private JTable currentPacketList;
     private volatile boolean dumperClosed = false;
+    private InterfaceWindow interfaceWindow;
 
-    public PacketCapturing(NetworkInterfaceInfo networkInfo) {
+    public PacketCapturing(NetworkInterfaceInfo networkInfo, InterfaceWindow window) {
         this.networkInfo = networkInfo;
         this.graphGUI = new NetworkGraphGUI(this);
+        this.interfaceWindow = window;
     }
 
     public void startCapturing(PcapNetworkInterface device, JTable packetList, String filterExpression) throws PcapNativeException, NotOpenException {
@@ -176,57 +181,142 @@ public class PacketCapturing {
         String sourceAddress = "Unknown";
         String destAddress = "Unknown";
         String protocol = "Unknown";
+        String httpContent = "";
+        int payloadLength = 0;
+        long timestamp = System.currentTimeMillis(); // Default to current time
+
+        // Get timestamp from handle if available, with proper null checking
+        if (handle != null && handle.isOpen()) {
+            try {
+                java.sql.Timestamp pcapTimestamp = handle.getTimestamp();
+                if (pcapTimestamp != null) {
+                    timestamp = pcapTimestamp.getTime();
+                } else {
+                    System.out.println("Warning: Null timestamp from PcapHandle, using system time");
+                }
+            } catch (NotOpenException e) {
+                System.out.println("Warning: Handle not open for timestamp, using system time");
+            } catch (Exception e) {
+                System.out.println("Warning: Error getting timestamp: " + e.getMessage() + ", using system time");
+            }
+        }
 
         try {
-            // First, check if it's a raw 802.11 frame
+            // Extract addresses and protocol
             if (packet instanceof EthernetPacket) {
                 EthernetPacket ethernetPacket = (EthernetPacket) packet;
-
-                // Try to get the encapsulated IP packet
                 if (ethernetPacket.getPayload() instanceof IpPacket) {
                     IpPacket ipPacket = (IpPacket) ethernetPacket.getPayload();
                     sourceAddress = ipPacket.getHeader().getSrcAddr().getHostAddress();
                     destAddress = ipPacket.getHeader().getDstAddr().getHostAddress();
                     protocol = getEncapsulatedProtocol(ipPacket);
+                    
+                    // Extract HTTP content if it's TCP
+                    if (ipPacket.getPayload() instanceof TcpPacket) {
+                        TcpPacket tcpPacket = (TcpPacket) ipPacket.getPayload();
+                        if (tcpPacket.getPayload() != null) {
+                            byte[] payload = tcpPacket.getPayload().getRawData();
+                            payloadLength = payload.length;
+                            String content = new String(payload, StandardCharsets.UTF_8);
+                            if (isHttpContent(content)) {
+                                httpContent = extractHttpInfo(content);
+                                protocol = "HTTP";
+                                // Update graph with HTTP details
+                                graphGUI.updateTraffic(packet, sourceAddress, destAddress, protocol);
+                            }
+                        }
+                    }
                 }
-            }
-            // Handle IPv4 packets
-            else if (packet.contains(IpV4Packet.class)) {
+            } else if (packet.contains(IpV4Packet.class)) {
                 IpV4Packet ipPacket = packet.get(IpV4Packet.class);
                 sourceAddress = ipPacket.getHeader().getSrcAddr().getHostAddress();
                 destAddress = ipPacket.getHeader().getDstAddr().getHostAddress();
                 protocol = getEncapsulatedProtocol(ipPacket);
-            }
-            // Handle IPv6 packets
-            else if (packet.contains(IpV6Packet.class)) {
-                IpV6Packet ipPacket = packet.get(IpV6Packet.class);
-                sourceAddress = ipPacket.getHeader().getSrcAddr().getHostAddress();
-                destAddress = ipPacket.getHeader().getDstAddr().getHostAddress();
-                protocol = getEncapsulatedProtocol(ipPacket);
+                
+                // Extract HTTP content if it's TCP
+                if (ipPacket.getPayload() instanceof TcpPacket) {
+                    TcpPacket tcpPacket = (TcpPacket) ipPacket.getPayload();
+                    if (tcpPacket.getPayload() != null) {
+                        byte[] payload = tcpPacket.getPayload().getRawData();
+                        payloadLength = payload.length;
+                        String content = new String(payload, StandardCharsets.UTF_8);
+                        if (isHttpContent(content)) {
+                            httpContent = extractHttpInfo(content);
+                            protocol = "HTTP";
+                            // Update graph with HTTP details
+                            graphGUI.updateTraffic(packet, sourceAddress, destAddress, protocol);
+                        }
+                    }
+                }
             }
 
-            // Mark protocol as HTTP if applicable
-            if (HttpPacketParser.isHttpPacket(packet)) {
-                protocol = "HTTP";
-            }
-
-            // Update the graph visualization with detailed packet info
-            if (!sourceAddress.equals("Unknown") && !destAddress.equals("Unknown")) {
-                graphGUI.updateTraffic(packet, sourceAddress, destAddress, protocol);
-            }
-
-            // Only add packets that match the filter
+            // Only display packets that match the current filter
             if (shouldDisplayPacket(protocol)) {
                 DefaultTableModel model = (DefaultTableModel) packetList.getModel();
-                Object[] row = {model.getRowCount() + 1, packet.length(), sourceAddress, destAddress, protocol};
-                model.addRow(row);
-                capturedPackets.add(packet);
+                // Display "-" if no HTTP content was found
+                String displayContent = httpContent.isEmpty() ? "-" : httpContent;
+                model.addRow(new Object[]{
+                    new java.util.Date(timestamp),
+                    sourceAddress,
+                    destAddress,
+                    protocol,
+                    payloadLength,
+                    displayContent
+                });
+                
+                // Keep the latest packet visible
+                int lastRow = packetList.getRowCount() - 1;
+                if (lastRow >= 0) {
+                    packetList.scrollRectToVisible(packetList.getCellRect(lastRow, 0, true));
+                }
             }
 
         } catch (Exception e) {
-            System.out.println("Error processing packet: " + e.getMessage());
+            System.err.println("Error processing packet: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    private boolean isHttpContent(String content) {
+        if (content == null || content.isEmpty()) {
+            return false;
+        }
+        // Check for common HTTP methods
+        String[] httpMethods = {"GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS", "TRACE", "CONNECT", "PATCH"};
+        for (String method : httpMethods) {
+            if (content.startsWith(method + " ")) {
+                return true;
+            }
+        }
+        // Check for HTTP response
+        return content.startsWith("HTTP/");
+    }
+
+    private String extractHttpInfo(String httpContent) {
+        if (httpContent == null || httpContent.isEmpty()) {
+            return "";
+        }
+        // Extract the first line and any important headers
+        String[] lines = httpContent.split("\\r?\\n");
+        StringBuilder result = new StringBuilder();
+        
+        // Add the first line (request/response line)
+        if (lines.length > 0) {
+            result.append(lines[0].trim());
+        }
+        
+        // Look for important headers
+        for (int i = 1; i < lines.length && i < 5; i++) {
+            String line = lines[i].trim();
+            if (line.startsWith("Host:") || 
+                line.startsWith("Content-Type:") || 
+                line.startsWith("Content-Length:") ||
+                line.startsWith("Location:")) {
+                result.append("\n").append(line);
+            }
+        }
+        
+        return result.toString();
     }
 
     private String getEncapsulatedProtocol(IpPacket ipPacket) {
@@ -287,123 +377,39 @@ public class PacketCapturing {
         }
     }
 
+    public void pauseCapturing() {
+        isPaused = true;
+    }
+
     public void resumeCapturing() {
         try {
             if (currentDevice != null) {
-                // Reopen the handle with the same settings
-                handle = new PcapHandle.Builder(currentDevice.getName())
-                        .snaplen(65536)
-                        .promiscuousMode(PcapNetworkInterface.PromiscuousMode.PROMISCUOUS)
-                        .timeoutMillis(50)
-                        .build();
-                
-                // Reapply any existing filter
-                if (handle.getFilteringExpression() != null && !handle.getFilteringExpression().isEmpty()) {
-                    handle.setFilter(handle.getFilteringExpression(), BpfCompileMode.OPTIMIZE);
-                }
-
-                // Create new dumper with append mode
-                dumperClosed = false; // Reset the flag
-                dumper = handle.dumpOpen("out.pcap");  // This will append to existing file
-                
+                isPaused = false;
                 isRunning = true;
-
-                // Create packet listener outside the loop
-                PacketListener listener = new PacketListener() {
-                    @Override
-                    public void gotPacket(Packet packet) {
-                        try {
-                            packetQueue.put(packet);
-                            // Update both the table and graph
-                            SwingUtilities.invokeLater(() -> updatePacketTable(packet, currentPacketList));
-                            if (!dumperClosed && dumper != null) {
-                                try {
-                                    // Use a try-catch block to handle timestamp errors
-                                    try {
-                                        dumper.dump(packet, handle.getTimestamp());
-                                    } catch (IllegalArgumentException e) {
-                                        // If there's a timestamp error, use a default timestamp
-                                        System.out.println("Timestamp error, using default timestamp: " + e.getMessage());
-                                        // Create a new timestamp with current time
-                                        java.sql.Timestamp timestamp = new java.sql.Timestamp(System.currentTimeMillis());
-                                        dumper.dump(packet, timestamp);
-                                    }
-                                } catch (NotOpenException e) {
-                                    System.out.println("Dumper is closed, skipping packet dump");
-                                    dumperClosed = true;
-                                }
-                            }
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                        }
+                
+                // Only recreate handle if it's closed
+                if (handle == null || !handle.isOpen()) {
+                    // Reopen the handle with the same settings
+                    handle = new PcapHandle.Builder(currentDevice.getName())
+                            .snaplen(65536)
+                            .promiscuousMode(PcapNetworkInterface.PromiscuousMode.PROMISCUOUS)
+                            .timeoutMillis(50)
+                            .build();
+                    
+                    // Reapply any existing filter
+                    if (handle.getFilteringExpression() != null && !handle.getFilteringExpression().isEmpty()) {
+                        handle.setFilter(handle.getFilteringExpression(), BpfCompileMode.OPTIMIZE);
                     }
-                };
 
-                // Start capture thread with error handling
-                new Thread(() -> {
-                    try {
-                        while (isRunning && handle.isOpen()) {
-                            try {
-                                // Capture one packet at a time with error handling
-                                handle.loop(1, listener);
-                            } catch (InterruptedException e) {
-                                // Handle interruption
-                                Thread.currentThread().interrupt();
-                                break;
-                            } catch (NotOpenException e) {
-                                // Handle closed handle
-                                System.out.println("PcapHandle is closed, stopping capture");
-                                break;
-                            } catch (PcapNativeException e) {
-                                // Handle native exceptions
-                                System.out.println("PcapNativeException: " + e.getMessage());
-                                // Try to recover by reopening the handle
-                                try {
-                                    Thread.sleep(1000); // Wait a bit before retrying
-                                    if (isRunning) {
-                                        handle = new PcapHandle.Builder(currentDevice.getName())
-                                                .snaplen(65536)
-                                                .promiscuousMode(PcapNetworkInterface.PromiscuousMode.PROMISCUOUS)
-                                                .timeoutMillis(50)
-                                                .build();
-                                        if (handle.getFilteringExpression() != null && !handle.getFilteringExpression().isEmpty()) {
-                                            handle.setFilter(handle.getFilteringExpression(), BpfCompileMode.OPTIMIZE);
-                                        }
-                                        dumperClosed = false;
-                                        dumper = handle.dumpOpen("out.pcap");
-                                    }
-                                } catch (Exception ex) {
-                                    System.out.println("Failed to recover from PcapNativeException: " + ex.getMessage());
-                                    break;
-                                }
-                            } catch (Error e) {
-                                // Handle JVM errors like Invalid memory access
-                                System.out.println("JVM Error during capture: " + e.getMessage());
-                                // Try to recover by reopening the handle
-                                try {
-                                    Thread.sleep(1000); // Wait a bit before retrying
-                                    if (isRunning) {
-                                        handle = new PcapHandle.Builder(currentDevice.getName())
-                                                .snaplen(65536)
-                                                .promiscuousMode(PcapNetworkInterface.PromiscuousMode.PROMISCUOUS)
-                                                .timeoutMillis(50)
-                                                .build();
-                                        if (handle.getFilteringExpression() != null && !handle.getFilteringExpression().isEmpty()) {
-                                            handle.setFilter(handle.getFilteringExpression(), BpfCompileMode.OPTIMIZE);
-                                        }
-                                        dumperClosed = false;
-                                        dumper = handle.dumpOpen("out.pcap");
-                                    }
-                                } catch (Exception ex) {
-                                    System.out.println("Failed to recover from JVM Error: " + ex.getMessage());
-                                    break;
-                                }
-                            }
-                        }
-                    } catch (Exception e) {
-                        e.printStackTrace();
+                    // Create new dumper with append mode if needed
+                    if (dumper == null || dumperClosed) {
+                        dumperClosed = false;
+                        dumper = handle.dumpOpen("out.pcap");
                     }
-                }).start();
+                    
+                    // Start a new capture thread
+                    startCaptureThread();
+                }
             } else {
                 throw new IllegalStateException("No network interface was previously captured");
             }
@@ -427,9 +433,24 @@ public class PacketCapturing {
         return protocol.equals(protocolFilter);
     }
 
-    public void saveCapture() throws NotOpenException, PcapNativeException {
-        if (dumper != null && !dumperClosed) {
-            dumper.flush();  // Ensure all packets are written
+    public void saveCapture(String filePath) {
+        try {
+            PcapHandle saveHandle = new PcapHandle.Builder(currentDevice.getName())
+                    .snaplen(65536)
+                    .promiscuousMode(PcapNetworkInterface.PromiscuousMode.PROMISCUOUS)
+                    .timeoutMillis(50)
+                    .build();
+            
+            PcapDumper saveDumper = saveHandle.dumpOpen(filePath);
+            for (Packet packet : capturedPackets) {
+                saveDumper.dump(packet, new java.sql.Timestamp(System.currentTimeMillis()));
+            }
+            saveDumper.flush();
+            saveDumper.close();
+            saveHandle.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new RuntimeException("Failed to save capture: " + e.getMessage());
         }
     }
 
@@ -534,5 +555,71 @@ public class PacketCapturing {
             sb.append(String.format("%02X", b));
         }
         return sb.toString();
+    }
+
+    private void updateStatistics(Packet packet) {
+        if (interfaceWindow != null) {
+            try {
+                // Update statistics in the interface window
+                SwingUtilities.invokeLater(() -> {
+                    interfaceWindow.updatePacketStats(packet);
+                });
+            } catch (Exception e) {
+                System.out.println("Error updating statistics: " + e.getMessage());
+                e.printStackTrace();
+            }
+        }
+    }
+
+    public void clearCapture() {
+        capturedPackets.clear();
+        if (currentPacketList != null) {
+            SwingUtilities.invokeLater(() -> {
+                DefaultTableModel model = (DefaultTableModel) currentPacketList.getModel();
+                model.setRowCount(0);
+            });
+        }
+        if (graphGUI != null) {
+            graphGUI.updateTraffic(null, null, null, null);
+        }
+    }
+
+    public boolean hasCapturedPackets() {
+        return !capturedPackets.isEmpty();
+    }
+
+    private void startCaptureThread() {
+        new Thread(() -> {
+            try {
+                while (isRunning && handle.isOpen()) {
+                    if (!isPaused) {
+                        try {
+                            handle.loop(1, (PacketListener) packet -> {
+                                try {
+                                    capturedPackets.add(packet);
+                                    packetQueue.put(packet);
+                                    SwingUtilities.invokeLater(() -> {
+                                        updatePacketTable(packet, currentPacketList);
+                                        updateStatistics(packet);
+                                    });
+                                } catch (InterruptedException e) {
+                                    Thread.currentThread().interrupt();
+                                }
+                            });
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            break;
+                        } catch (NotOpenException e) {
+                            System.out.println("PcapHandle is closed");
+                            break;
+                        }
+                    } else {
+                        Thread.sleep(100); // Sleep while paused
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
     }
 }
