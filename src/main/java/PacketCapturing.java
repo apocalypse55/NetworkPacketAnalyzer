@@ -31,6 +31,17 @@ public class PacketCapturing {
     private JTable currentPacketList;
     private volatile boolean dumperClosed = false;
     private InterfaceWindow interfaceWindow;
+    private int packetCounter = 0; // Add counter for packet numbers
+    
+    // Statistics tracking fields
+    private long lastUpdateTime = System.currentTimeMillis();
+    private long bytesReceived = 0;
+    private int totalPackets = 0;
+    private int tcpPackets = 0;
+    private int udpPackets = 0;
+    private int httpPackets = 0;
+    private int activeConnections = 0;
+    private java.util.Set<String> activeConnectionSet = new java.util.HashSet<>();
 
     public PacketCapturing(NetworkInterfaceInfo networkInfo, InterfaceWindow window) {
         this.networkInfo = networkInfo;
@@ -73,7 +84,10 @@ public class PacketCapturing {
                 public void gotPacket(Packet packet) {
                     try {
                         packetQueue.put(packet);
-                        SwingUtilities.invokeLater(() -> updatePacketTable(packet, packetList));
+                        SwingUtilities.invokeLater(() -> {
+                            updatePacketTable(packet, packetList);
+                            updateStatistics(packet);
+                        });
                         if (!dumperClosed && dumper != null) {
                             try {
                                 // Use a try-catch block to handle timestamp errors
@@ -181,25 +195,7 @@ public class PacketCapturing {
         String sourceAddress = "Unknown";
         String destAddress = "Unknown";
         String protocol = "Unknown";
-        String httpContent = "";
-        int payloadLength = 0;
-        long timestamp = System.currentTimeMillis(); // Default to current time
-
-        // Get timestamp from handle if available, with proper null checking
-        if (handle != null && handle.isOpen()) {
-            try {
-                java.sql.Timestamp pcapTimestamp = handle.getTimestamp();
-                if (pcapTimestamp != null) {
-                    timestamp = pcapTimestamp.getTime();
-                } else {
-                    System.out.println("Warning: Null timestamp from PcapHandle, using system time");
-                }
-            } catch (NotOpenException e) {
-                System.out.println("Warning: Handle not open for timestamp, using system time");
-            } catch (Exception e) {
-                System.out.println("Warning: Error getting timestamp: " + e.getMessage() + ", using system time");
-            }
-        }
+        int payloadLength = packet.length();
 
         try {
             // Extract addresses and protocol
@@ -209,43 +205,37 @@ public class PacketCapturing {
                     IpPacket ipPacket = (IpPacket) ethernetPacket.getPayload();
                     sourceAddress = ipPacket.getHeader().getSrcAddr().getHostAddress();
                     destAddress = ipPacket.getHeader().getDstAddr().getHostAddress();
-                    protocol = getEncapsulatedProtocol(ipPacket);
                     
-                    // Extract HTTP content if it's TCP
+                    // Get the actual payload length from IP packet
+                    if (ipPacket instanceof IpV4Packet) {
+                        payloadLength = ((IpV4Packet) ipPacket).getHeader().getTotalLength();
+                    } else if (ipPacket instanceof IpV6Packet) {
+                        payloadLength = ((IpV6Packet) ipPacket).getHeader().getPayloadLength();
+                    }
+                    
+                    // Determine protocol and handle TCP/UDP specific info
                     if (ipPacket.getPayload() instanceof TcpPacket) {
                         TcpPacket tcpPacket = (TcpPacket) ipPacket.getPayload();
+                        protocol = "TCP";
+                        // Add port numbers to addresses
+                        sourceAddress += ":" + tcpPacket.getHeader().getSrcPort().valueAsInt();
+                        destAddress += ":" + tcpPacket.getHeader().getDstPort().valueAsInt();
+                        
                         if (tcpPacket.getPayload() != null) {
                             byte[] payload = tcpPacket.getPayload().getRawData();
-                            payloadLength = payload.length;
                             String content = new String(payload, StandardCharsets.UTF_8);
                             if (isHttpContent(content)) {
-                                httpContent = extractHttpInfo(content);
                                 protocol = "HTTP";
-                                // Update graph with HTTP details
-                                graphGUI.updateTraffic(packet, sourceAddress, destAddress, protocol);
                             }
                         }
-                    }
-                }
-            } else if (packet.contains(IpV4Packet.class)) {
-                IpV4Packet ipPacket = packet.get(IpV4Packet.class);
-                sourceAddress = ipPacket.getHeader().getSrcAddr().getHostAddress();
-                destAddress = ipPacket.getHeader().getDstAddr().getHostAddress();
-                protocol = getEncapsulatedProtocol(ipPacket);
-                
-                // Extract HTTP content if it's TCP
-                if (ipPacket.getPayload() instanceof TcpPacket) {
-                    TcpPacket tcpPacket = (TcpPacket) ipPacket.getPayload();
-                    if (tcpPacket.getPayload() != null) {
-                        byte[] payload = tcpPacket.getPayload().getRawData();
-                        payloadLength = payload.length;
-                        String content = new String(payload, StandardCharsets.UTF_8);
-                        if (isHttpContent(content)) {
-                            httpContent = extractHttpInfo(content);
-                            protocol = "HTTP";
-                            // Update graph with HTTP details
-                            graphGUI.updateTraffic(packet, sourceAddress, destAddress, protocol);
-                        }
+                    } else if (ipPacket.getPayload() instanceof UdpPacket) {
+                        UdpPacket udpPacket = (UdpPacket) ipPacket.getPayload();
+                        protocol = "UDP";
+                        // Add port numbers to addresses
+                        sourceAddress += ":" + udpPacket.getHeader().getSrcPort().valueAsInt();
+                        destAddress += ":" + udpPacket.getHeader().getDstPort().valueAsInt();
+                    } else {
+                        protocol = getEncapsulatedProtocol(ipPacket);
                     }
                 }
             }
@@ -253,24 +243,32 @@ public class PacketCapturing {
             // Only display packets that match the current filter
             if (shouldDisplayPacket(protocol)) {
                 DefaultTableModel model = (DefaultTableModel) packetList.getModel();
-                // Display "-" if no HTTP content was found
-                String displayContent = httpContent.isEmpty() ? "-" : httpContent;
+                
+                // Increment counter and use it for the packet number
+                packetCounter++;
+                
                 model.addRow(new Object[]{
-                    new java.util.Date(timestamp),
+                    packetCounter,
                     sourceAddress,
                     destAddress,
                     protocol,
-                    payloadLength,
-                    displayContent
+                    payloadLength
                 });
-                
+
                 // Keep the latest packet visible
                 int lastRow = packetList.getRowCount() - 1;
                 if (lastRow >= 0) {
                     packetList.scrollRectToVisible(packetList.getCellRect(lastRow, 0, true));
                 }
+                
+                // Store the packet for later retrieval
+                capturedPackets.add(packet);
+                
+                // Update visualization if needed
+                if (graphGUI != null) {
+                    graphGUI.updateTraffic(packet, sourceAddress, destAddress, protocol);
+                }
             }
-
         } catch (Exception e) {
             System.err.println("Error processing packet: " + e.getMessage());
             e.printStackTrace();
@@ -558,11 +556,66 @@ public class PacketCapturing {
     }
 
     private void updateStatistics(Packet packet) {
-        if (interfaceWindow != null) {
+        if (interfaceWindow != null && packet != null) {
             try {
+                // Update packet counts
+                totalPackets++;
+                
+                // Calculate bandwidth
+                long currentTime = System.currentTimeMillis();
+                bytesReceived += packet.length();
+                double timeDiff = (currentTime - lastUpdateTime) / 1000.0; // Convert to seconds
+                if (timeDiff >= 1.0) { // Update bandwidth every second
+                    double bandwidth = (bytesReceived / timeDiff) / 1024.0; // Convert to KB/s
+                    bytesReceived = 0;
+                    lastUpdateTime = currentTime;
+                    
+                    // Update bandwidth in UI
+                    SwingUtilities.invokeLater(() -> {
+                        interfaceWindow.updateBandwidth(String.format("%.2f", bandwidth));
+                    });
+                }
+
+                // Update protocol-specific counts
+                if (packet.contains(TcpPacket.class)) {
+                    TcpPacket tcpPacket = packet.get(TcpPacket.class);
+                    tcpPackets++;
+                    
+                    // Check for HTTP content
+                    if (tcpPacket.getPayload() != null) {
+                        String content = new String(tcpPacket.getPayload().getRawData(), StandardCharsets.UTF_8);
+                        if (isHttpContent(content)) {
+                            httpPackets++;
+                        }
+                    }
+                    
+                    // Track active connections
+                    if (packet.contains(IpPacket.class)) {
+                        IpPacket ipPacket = packet.get(IpPacket.class);
+                        String connection = String.format("%s:%d-%s:%d",
+                            ipPacket.getHeader().getSrcAddr().getHostAddress(),
+                            tcpPacket.getHeader().getSrcPort().valueAsInt(),
+                            ipPacket.getHeader().getDstAddr().getHostAddress(),
+                            tcpPacket.getHeader().getDstPort().valueAsInt());
+                            
+                        if (tcpPacket.getHeader().getSyn() && !tcpPacket.getHeader().getAck()) {
+                            activeConnectionSet.add(connection);
+                        } else if (tcpPacket.getHeader().getFin() || tcpPacket.getHeader().getRst()) {
+                            activeConnectionSet.remove(connection);
+                        }
+                        activeConnections = activeConnectionSet.size();
+                    }
+                } else if (packet.contains(UdpPacket.class)) {
+                    udpPackets++;
+                }
+
                 // Update statistics in the interface window
                 SwingUtilities.invokeLater(() -> {
-                    interfaceWindow.updatePacketStats(packet);
+                    interfaceWindow.updateTotalPackets(totalPackets);
+                    interfaceWindow.updateTcpPackets(tcpPackets);
+                    interfaceWindow.updateUdpPackets(udpPackets);
+                    interfaceWindow.updateHttpPackets(httpPackets);
+                    interfaceWindow.updateActiveConnections(activeConnections);
                 });
             } catch (Exception e) {
                 System.out.println("Error updating statistics: " + e.getMessage());
@@ -573,10 +626,30 @@ public class PacketCapturing {
 
     public void clearCapture() {
         capturedPackets.clear();
+        packetCounter = 0;
+        // Reset statistics
+        totalPackets = 0;
+        tcpPackets = 0;
+        udpPackets = 0;
+        httpPackets = 0;
+        bytesReceived = 0;
+        activeConnections = 0;
+        activeConnectionSet.clear();
+        lastUpdateTime = System.currentTimeMillis();
+        
         if (currentPacketList != null) {
             SwingUtilities.invokeLater(() -> {
                 DefaultTableModel model = (DefaultTableModel) currentPacketList.getModel();
                 model.setRowCount(0);
+                // Update statistics display
+                if (interfaceWindow != null) {
+                    interfaceWindow.updateTotalPackets(0);
+                    interfaceWindow.updateTcpPackets(0);
+                    interfaceWindow.updateUdpPackets(0);
+                    interfaceWindow.updateHttpPackets(0);
+                    interfaceWindow.updateBandwidth("0.00");
+                    interfaceWindow.updateActiveConnections(0);
+                }
             });
         }
         if (graphGUI != null) {
@@ -621,5 +694,66 @@ public class PacketCapturing {
                 e.printStackTrace();
             }
         }).start();
+    }
+
+    public String getHexData(Packet packet) {
+        if (packet == null) return "";
+        
+        StringBuilder hexData = new StringBuilder();
+        byte[] rawData = null;
+        
+        // Get application layer data
+        if (packet.contains(TcpPacket.class)) {
+            TcpPacket tcpPacket = packet.get(TcpPacket.class);
+            if (tcpPacket.getPayload() != null) {
+                rawData = tcpPacket.getPayload().getRawData();
+            }
+        } else if (packet.contains(UdpPacket.class)) {
+            UdpPacket udpPacket = packet.get(UdpPacket.class);
+            if (udpPacket.getPayload() != null) {
+                rawData = udpPacket.getPayload().getRawData();
+            }
+        }
+        
+        if (rawData != null && rawData.length > 0) {
+            StringBuilder hexBuilder = new StringBuilder();
+            StringBuilder asciiBuilder = new StringBuilder();
+            int lineCount = 0;
+            
+            for (int i = 0; i < rawData.length; i++) {
+                // Add hex representation
+                hexBuilder.append(String.format("%02X ", rawData[i]));
+                
+                // Add ASCII representation (if printable)
+                if (rawData[i] >= 32 && rawData[i] <= 126) {
+                    asciiBuilder.append((char) rawData[i]);
+                } else {
+                    asciiBuilder.append('.');
+                }
+                
+                // Add line break every 16 bytes
+                if ((i + 1) % 16 == 0 || i == rawData.length - 1) {
+                    // Pad hex part if needed
+                    while ((i + 1) % 16 != 0) {
+                        hexBuilder.append("   ");
+                        asciiBuilder.append(" ");
+                        i++;
+                    }
+                    
+                    hexData.append(String.format("%04X  %-48s  |%s|\n", 
+                        lineCount * 16, 
+                        hexBuilder.toString().trim(), 
+                        asciiBuilder.toString()));
+                    
+                    hexBuilder.setLength(0);
+                    asciiBuilder.setLength(0);
+                    lineCount++;
+                }
+            }
+        } else {
+            hexData.append("No application layer data available.");
+        }
+        
+        return hexData.toString();
     }
 }

@@ -7,6 +7,7 @@ import org.pcap4j.packet.Packet;
 import javax.swing.*;
 import javax.swing.border.Border;
 import javax.swing.table.DefaultTableModel;
+import javax.swing.table.TableCellRenderer;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -249,8 +250,19 @@ InterfaceWindow extends JFrame implements ActionListener {
         String[] columnNames = {"No.", "Source", "Destination", "Protocol", "Length"};
         DefaultTableModel model = new DefaultTableModel(columnNames, 0);
         packetList = new JTable(model);
+        
+        // Set column widths
+        packetList.getColumnModel().getColumn(0).setPreferredWidth(50);  // No.
+        packetList.getColumnModel().getColumn(1).setPreferredWidth(200); // Source
+        packetList.getColumnModel().getColumn(2).setPreferredWidth(200); // Destination
+        packetList.getColumnModel().getColumn(3).setPreferredWidth(100); // Protocol
+        packetList.getColumnModel().getColumn(4).setPreferredWidth(100); // Length
+        
+        // Set default row height
+        packetList.setRowHeight(25);
+        
         JScrollPane scrollPane = new JScrollPane(packetList);
-        scrollPane.setBounds(10, 50, 950, 400);  // Reduced width to make room for stats panel
+        scrollPane.setBounds(10, 50, 950, 400);
         panel.add(scrollPane);
 
         // All information panels will start at the same y-coordinate
@@ -297,7 +309,7 @@ InterfaceWindow extends JFrame implements ActionListener {
                 if (selectedRow >= 0) {
                     Packet packet = packetCapturing.getPacket(selectedRow);
                     if (packet != null) {
-                        hexdataInfo.setText(byteArrayToHex(packet.getRawData()));
+                        hexdataInfo.setText(packetCapturing.getHexData(packet));
                         packetInformation.setText(packetCapturing.getPacketDetails(packet));
                     }
                 }
@@ -542,7 +554,73 @@ InterfaceWindow extends JFrame implements ActionListener {
         });
     }
 
+    public void updateBandwidth(String bandwidth) {
+        SwingUtilities.invokeLater(() -> {
+            updateLabelWithAnimation(bandwidthLabel, "Bandwidth: " + bandwidth);
+        });
+    }
+
+    public void updateTotalPackets(int count) {
+        SwingUtilities.invokeLater(() -> {
+            totalPackets = count;
+            updateLabelWithAnimation(totalPacketsLabel, "Total Packets: " + count);
+        });
+    }
+
+    public void updateTcpPackets(int count) {
+        SwingUtilities.invokeLater(() -> {
+            tcpPackets = count;
+            updateLabelWithAnimation(tcpPacketsLabel, "TCP Packets: " + count);
+        });
+    }
+
+    public void updateUdpPackets(int count) {
+        SwingUtilities.invokeLater(() -> {
+            udpPackets = count;
+            updateLabelWithAnimation(udpPacketsLabel, "UDP Packets: " + count);
+        });
+    }
+
+    public void updateHttpPackets(int count) {
+        SwingUtilities.invokeLater(() -> {
+            httpPackets = count;
+            updateLabelWithAnimation(httpPacketsLabel, "HTTP Packets: " + count);
+        });
+    }
+
+    public void updateActiveConnections(int count) {
+        SwingUtilities.invokeLater(() -> {
+            updateLabelWithAnimation(activeConnectionsLabel, "Active Connections: " + count);
+        });
+    }
+
     public static void main(String[] args) {
         new InterfaceWindow();
+    }
+
+    private static class MultiLineTableCellRenderer extends JTextArea implements TableCellRenderer {
+        public MultiLineTableCellRenderer() {
+            setLineWrap(true);
+            setWrapStyleWord(true);
+            setOpaque(true);
+        }
+
+        public Component getTableCellRendererComponent(JTable table, Object value,
+                boolean isSelected, boolean hasFocus, int row, int column) {
+            
+            setText((value == null) ? "" : value.toString());
+            setSize(table.getColumnModel().getColumn(column).getWidth(),
+                    getPreferredSize().height);
+            
+            if (isSelected) {
+                setBackground(table.getSelectionBackground());
+                setForeground(table.getSelectionForeground());
+            } else {
+                setBackground(table.getBackground());
+                setForeground(table.getForeground());
+            }
+            
+            return this;
+        }
     }
 }
