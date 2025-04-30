@@ -37,4 +37,4 @@ build/
 ### Mac OS ###
 .DS_Store
 
-out.pcap
+.out.pcap

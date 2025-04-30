@@ -1,20 +1,16 @@
-import org.pcap4j.core.NotOpenException;
-import org.pcap4j.core.*;
+import org.pcap4j.core.PcapAddress;
 import org.pcap4j.core.PcapNativeException;
 import org.pcap4j.core.PcapNetworkInterface;
 import org.pcap4j.packet.Packet;
-
 import javax.swing.*;
-import javax.swing.border.Border;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableCellRenderer;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.net.NetworkInterface;
+import java.io.File;
 import java.net.SocketException;
 import java.util.List;
-import java.io.File;
 
 public class
 InterfaceWindow extends JFrame implements ActionListener {
@@ -28,7 +24,7 @@ InterfaceWindow extends JFrame implements ActionListener {
     private JTextArea interfaceInfo;  // Add this field
     private JTextField filterTextField;  // Add this field
     private JPanel panel;  // Add this field
-    
+
     // Statistics Panel Components
     private JPanel statsPanel;
     private JLabel totalPacketsLabel;
@@ -104,7 +100,7 @@ InterfaceWindow extends JFrame implements ActionListener {
         capture.setBackground(new Color(46, 204, 64));  // Green color
         capture.setForeground(Color.WHITE);
         capture.setFocusPainted(false);
-        
+
         // Pause/Resume button
         JButton pauseResume = new JButton("Pause");
         pauseResume.setBounds(990, 20, 100, 25);
@@ -188,12 +184,12 @@ InterfaceWindow extends JFrame implements ActionListener {
                     "Clear Confirmation",
                     JOptionPane.YES_NO_OPTION,
                     JOptionPane.WARNING_MESSAGE);
-            
+
             if (result == JOptionPane.YES_OPTION) {
                 // Clear the packet list
                 DefaultTableModel model = (DefaultTableModel) packetList.getModel();
                 model.setRowCount(0);
-                
+
                 // Reset statistics
                 totalPackets = 0;
                 tcpPackets = 0;
@@ -201,11 +197,11 @@ InterfaceWindow extends JFrame implements ActionListener {
                 httpPackets = 0;
                 totalBytes = 0;
                 updateStatistics();
-                
+
                 // Clear packet information and hex data
                 packetInformation.setText("");
                 hexdataInfo.setText("");
-                
+
                 // Reset graph if visible
                 packetCapturing.clearCapture();
             }
@@ -217,7 +213,7 @@ InterfaceWindow extends JFrame implements ActionListener {
                     JFileChooser fileChooser = new JFileChooser();
                     fileChooser.setDialogTitle("Save Capture File");
                     fileChooser.setSelectedFile(new File("capture.pcap"));
-                    
+
                     if (fileChooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
                         File file = fileChooser.getSelectedFile();
                         packetCapturing.saveCapture(file.getAbsolutePath());
@@ -250,17 +246,17 @@ InterfaceWindow extends JFrame implements ActionListener {
         String[] columnNames = {"No.", "Source", "Destination", "Protocol", "Length"};
         DefaultTableModel model = new DefaultTableModel(columnNames, 0);
         packetList = new JTable(model);
-        
+
         // Set column widths
         packetList.getColumnModel().getColumn(0).setPreferredWidth(50);  // No.
         packetList.getColumnModel().getColumn(1).setPreferredWidth(200); // Source
         packetList.getColumnModel().getColumn(2).setPreferredWidth(200); // Destination
         packetList.getColumnModel().getColumn(3).setPreferredWidth(100); // Protocol
         packetList.getColumnModel().getColumn(4).setPreferredWidth(100); // Length
-        
+
         // Set default row height
         packetList.setRowHeight(25);
-        
+
         JScrollPane scrollPane = new JScrollPane(packetList);
         scrollPane.setBounds(10, 50, 950, 400);
         panel.add(scrollPane);
@@ -447,11 +443,11 @@ InterfaceWindow extends JFrame implements ActionListener {
         statsPanel = new JPanel();
         statsPanel.setLayout(new GridLayout(6, 1, 5, 5));
         statsPanel.setBorder(BorderFactory.createTitledBorder("Statistics"));
-        
+
         // Position the stats panel on the far right, spanning the full height
         statsPanel.setBounds(970, 50, 300, 660);  // Full height from below controls to bottom
         statsPanel.setBackground(new Color(245, 245, 245));  // Light gray background
-        
+
         // Initialize labels with default values
         totalPacketsLabel = new JLabel("Total Packets: 0");
         tcpPacketsLabel = new JLabel("TCP Packets: 0");
@@ -459,25 +455,25 @@ InterfaceWindow extends JFrame implements ActionListener {
         httpPacketsLabel = new JLabel("HTTP Packets: 0");
         bandwidthLabel = new JLabel("Bandwidth: 0.00 KB/s");
         activeConnectionsLabel = new JLabel("Active Connections: 0");
-        
+
         // Style the labels
         Font labelFont = new Font("Arial", Font.BOLD, 12);
         Color labelColor = new Color(50, 50, 50);  // Dark gray text
-        
-        JLabel[] labels = {totalPacketsLabel, tcpPacketsLabel, udpPacketsLabel, 
-                          httpPacketsLabel, bandwidthLabel, activeConnectionsLabel};
-        
+
+        JLabel[] labels = {totalPacketsLabel, tcpPacketsLabel, udpPacketsLabel,
+                httpPacketsLabel, bandwidthLabel, activeConnectionsLabel};
+
         for (JLabel label : labels) {
             label.setFont(labelFont);
             label.setForeground(labelColor);
             label.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(200, 200, 200)),  // Bottom border
-                BorderFactory.createEmptyBorder(10, 10, 10, 10)  // Padding
+                    BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(200, 200, 200)),  // Bottom border
+                    BorderFactory.createEmptyBorder(10, 10, 10, 10)  // Padding
             ));
             label.setOpaque(true);
             label.setBackground(new Color(250, 250, 250));  // Slightly lighter than panel
         }
-        
+
         // Create a panel for each statistic with a title
         for (JLabel label : labels) {
             JPanel statPanel = new JPanel(new BorderLayout());
@@ -485,15 +481,15 @@ InterfaceWindow extends JFrame implements ActionListener {
             statPanel.add(label, BorderLayout.CENTER);
             statsPanel.add(statPanel);
         }
-        
+
         // Add stats panel to main panel
         panel.add(statsPanel);
-        
+
         // Initialize timer for updating statistics
         statsUpdateTimer = new Timer(1000, e -> updateStatistics());
         statsUpdateTimer.start();
     }
-    
+
     private void updateStatistics() {
         SwingUtilities.invokeLater(() -> {
             // Update bandwidth calculation
@@ -505,7 +501,7 @@ InterfaceWindow extends JFrame implements ActionListener {
                 totalBytes = 0; // Reset for next interval
                 lastUpdateTime = currentTime;
             }
-            
+
             // Update packet counts with animations
             updateLabelWithAnimation(totalPacketsLabel, "Total Packets: " + totalPackets);
             updateLabelWithAnimation(tcpPacketsLabel, "TCP Packets: " + tcpPackets);
@@ -514,12 +510,12 @@ InterfaceWindow extends JFrame implements ActionListener {
             updateLabelWithAnimation(activeConnectionsLabel, "Active Connections: " + calculateActiveConnections());
         });
     }
-    
+
     private void updateLabelWithAnimation(JLabel label, String newText) {
         if (!label.getText().equals(newText)) {
             label.setForeground(new Color(0, 150, 0));  // Green color for updates
             label.setText(newText);
-            
+
             // Reset color after a short delay
             Timer timer = new Timer(500, e -> {
                 label.setForeground(new Color(50, 50, 50));  // Back to dark gray
@@ -529,24 +525,24 @@ InterfaceWindow extends JFrame implements ActionListener {
             timer.start();
         }
     }
-    
+
     private int calculateActiveConnections() {
         // This is a placeholder - you would need to implement actual connection tracking
         return tcpPackets + udpPackets;
     }
-    
+
     public void updatePacketStats(Packet packet) {
         SwingUtilities.invokeLater(() -> {
             totalPackets++;
             totalBytes += packet.length();
-            
+
             // Determine packet type and update counters
             if (packet.contains(org.pcap4j.packet.TcpPacket.class)) {
                 tcpPackets++;
             } else if (packet.contains(org.pcap4j.packet.UdpPacket.class)) {
                 udpPackets++;
             }
-            
+
             // Check for HTTP packets
             if (HttpPacketParser.isHttpPacket(packet)) {
                 httpPackets++;
@@ -606,12 +602,12 @@ InterfaceWindow extends JFrame implements ActionListener {
         }
 
         public Component getTableCellRendererComponent(JTable table, Object value,
-                boolean isSelected, boolean hasFocus, int row, int column) {
-            
+                                                       boolean isSelected, boolean hasFocus, int row, int column) {
+
             setText((value == null) ? "" : value.toString());
             setSize(table.getColumnModel().getColumn(column).getWidth(),
                     getPreferredSize().height);
-            
+
             if (isSelected) {
                 setBackground(table.getSelectionBackground());
                 setForeground(table.getSelectionForeground());
@@ -619,7 +615,7 @@ InterfaceWindow extends JFrame implements ActionListener {
                 setBackground(table.getBackground());
                 setForeground(table.getForeground());
             }
-            
+
             return this;
         }
     }
