@@ -2,8 +2,68 @@ import org.pcap4j.packet.*;
 import org.pcap4j.packet.factory.PacketFactories;
 import org.pcap4j.packet.namednumber.EtherType;
 import java.nio.charset.StandardCharsets;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.TreeMap;
+import java.util.Arrays;
 
 public class HttpPacketParser {
+    // Add TCP stream reassembly support
+    private static final Map<String, TreeMap<Long, byte[]>> tcpStreams = new HashMap<>();
+    private static final Map<String, String> httpHeaders = new HashMap<>();
+    private static final Map<String, ByteArrayOutputStream> contentBuffers = new HashMap<>();
+    private static final Map<String, Integer> contentLengths = new HashMap<>();
+    private static final Map<String, Integer> expectedContentLengths = new HashMap<>();
+    
+    /**
+     * Creates a unique key for a TCP stream
+     */
+    private static String getTcpStreamKey(TcpPacket tcpPacket, IpPacket ipPacket) {
+        String sourceIP = ipPacket.getHeader().getSrcAddr().getHostAddress();
+        String destIP = ipPacket.getHeader().getDstAddr().getHostAddress();
+        int sourcePort = tcpPacket.getHeader().getSrcPort().valueAsInt();
+        int destPort = tcpPacket.getHeader().getDstPort().valueAsInt();
+        return String.format("%s:%d-%s:%d", sourceIP, sourcePort, destIP, destPort);
+    }
+
+    /**
+     * Reassembles TCP segments for a given stream
+     */
+    private static byte[] reassembleTcpStream(String streamKey, TcpPacket tcpPacket, byte[] payload) {
+        TreeMap<Long, byte[]> segments = tcpStreams.computeIfAbsent(streamKey, k -> new TreeMap<>());
+        long seq = tcpPacket.getHeader().getSequenceNumber() & 0xFFFFFFFFL; // Convert to unsigned
+        segments.put(seq, payload);
+
+        ByteArrayOutputStream assembled = new ByteArrayOutputStream();
+        ByteArrayOutputStream contentBuffer = contentBuffers.computeIfAbsent(streamKey, k -> new ByteArrayOutputStream());
+        
+        // Process segments in order
+        Long currentSeq = segments.firstKey();
+        while (segments.containsKey(currentSeq)) {
+            byte[] segment = segments.get(currentSeq);
+            assembled.write(segment, 0, segment.length);
+            contentBuffer.write(segment, 0, segment.length);
+            currentSeq += segment.length;
+            segments.remove(currentSeq - segment.length);
+        }
+
+        // Get the expected content length for this stream
+        Integer expectedLength = expectedContentLengths.get(streamKey);
+        
+        // If we have all the data, return it
+        if (expectedLength != null && contentBuffer.size() >= expectedLength) {
+            byte[] completeContent = contentBuffer.toByteArray();
+            // Clean up
+            contentBuffers.remove(streamKey);
+            expectedContentLengths.remove(streamKey);
+            tcpStreams.remove(streamKey);
+            return Arrays.copyOf(completeContent, expectedLength);
+        }
+
+        return null;
+    }
 
     /**
      * Converts a hex dump string to a byte array.
@@ -89,17 +149,47 @@ public class HttpPacketParser {
 
     /**
      * Extracts and decodes HTTP content from a TCP packet if present.
-     * @param packet The packet to extract from.
-     * @return Decoded HTTP content as a string, or null if not HTTP or no content.
      */
     public static String extractHttpContent(Packet packet) {
         if (!isHttpPacket(packet)) return null;
+        
         TcpPacket tcpPacket = packet.get(TcpPacket.class);
+        IpPacket ipPacket = packet.get(IpPacket.class);
+        
         if (tcpPacket == null || tcpPacket.getPayload() == null) return null;
+        
+        String streamKey = getTcpStreamKey(tcpPacket, ipPacket);
         byte[] payload = tcpPacket.getPayload().getRawData();
+        
         try {
-            return new String(payload, StandardCharsets.UTF_8);
+            String content = new String(payload, StandardCharsets.ISO_8859_1);
+            
+            // If this is the start of an HTTP message
+            if (content.startsWith("HTTP/")) {
+                httpHeaders.put(streamKey, content);
+                
+                // Extract Content-Length
+                int contentLengthIndex = content.indexOf("Content-Length: ");
+                if (contentLengthIndex != -1) {
+                    int endIndex = content.indexOf("\r\n", contentLengthIndex);
+                    if (endIndex != -1) {
+                        String lengthStr = content.substring(contentLengthIndex + 16, endIndex).trim();
+                        try {
+                            int contentLength = Integer.parseInt(lengthStr);
+                            expectedContentLengths.put(streamKey, contentLength);
+                        } catch (NumberFormatException e) {
+                            System.err.println("Invalid Content-Length: " + lengthStr);
+                        }
+                    }
+                }
+            }
+            
+            // Show current packet content instead of waiting for complete stream
+            return content;
+            
         } catch (Exception e) {
+            System.err.println("Error processing HTTP content: " + e.getMessage());
+            e.printStackTrace();
             return "Error decoding HTTP content: " + e.getMessage();
         }
     }
