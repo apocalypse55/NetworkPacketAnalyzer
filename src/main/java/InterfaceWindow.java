@@ -11,6 +11,8 @@ import java.awt.event.ActionListener;
 import java.io.File;
 import java.net.SocketException;
 import java.util.List;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 
 public class
 InterfaceWindow extends JFrame implements ActionListener {
@@ -44,7 +46,7 @@ InterfaceWindow extends JFrame implements ActionListener {
     public InterfaceWindow() {
         super("Network Packet Analyzer");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(1300, 800);  // Adjusted height
+        setSize(1300, 800);  // Original size
         setLocationRelativeTo(null);
 
         panel = new JPanel();
@@ -369,7 +371,7 @@ InterfaceWindow extends JFrame implements ActionListener {
 
         // Instantiate Backend
         backEnd = new NetworkInterfaceInfo();
-        packetCapturing = new PacketCapturing(backEnd, this);  // Pass 'this' reference
+        packetCapturing = new PacketCapturing(backEnd, this);
 
         // Populate Network List from Backend
         populateNetworkList();
@@ -444,8 +446,13 @@ InterfaceWindow extends JFrame implements ActionListener {
         statsPanel.setLayout(new GridLayout(6, 1, 5, 5));
         statsPanel.setBorder(BorderFactory.createTitledBorder("Statistics"));
 
+        // Get screen dimensions
+        Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
+        int screenWidth = (int) screenSize.getWidth();
+        int screenHeight = (int) screenSize.getHeight();
+
         // Position the stats panel on the far right, spanning the full height
-        statsPanel.setBounds(970, 50, 300, 660);  // Full height from below controls to bottom
+        statsPanel.setBounds(screenWidth - 330, 50, 300, screenHeight - 100);  // Adjusted to fill screen height
         statsPanel.setBackground(new Color(245, 245, 245));  // Light gray background
 
         // Initialize labels with default values
@@ -484,10 +491,6 @@ InterfaceWindow extends JFrame implements ActionListener {
 
         // Add stats panel to main panel
         panel.add(statsPanel);
-
-        // Initialize timer for updating statistics
-        statsUpdateTimer = new Timer(1000, e -> updateStatistics());
-        statsUpdateTimer.start();
     }
 
     private void updateStatistics() {
